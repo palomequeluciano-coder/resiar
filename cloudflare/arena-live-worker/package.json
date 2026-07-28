@@ -1,0 +1,16 @@
+{
+  "name": "resiar-arena-live-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "wrangler": "^4.0.0",
+    "@cloudflare/workers-types": "^4.20250525.0"
+  }
+}

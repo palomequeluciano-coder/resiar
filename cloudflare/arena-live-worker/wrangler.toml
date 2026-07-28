@@ -1,0 +1,16 @@
+name = "resiar-arena-live"
+main = "src/index.ts"
+compatibility_date = "2026-05-18"
+workers_dev = true
+preview_urls = false
+
+[[durable_objects.bindings]]
+name = "ARENA_ROOM"
+class_name = "ArenaRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = [ "ArenaRoom" ]
+
+# Secret required in Cloudflare and Supabase:
+# ARENA_LIVE_SECRET

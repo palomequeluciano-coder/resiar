@@ -1,0 +1,21 @@
+{
+  "name": "resiar-vite",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "node scripts/clean-dist.mjs && vite build",
+    "preview": "vite preview",
+    "build:vite": "vite build",
+    "dist:size": "node scripts/dist-size.mjs",
+    "check:js": "node scripts/predeploy-check.mjs --js-only",
+    "predeploy": "npm run build && node scripts/predeploy-check.mjs"
+  },
+  "devDependencies": {
+    "vite": "^8.0.10"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.105.4"
+  }
+}

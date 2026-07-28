@@ -1,0 +1,31 @@
+# Supabase Edge Functions configuration.
+# Browser CORS preflight is handled inside each function.
+
+[functions.refresh-question-bank-version]
+verify_jwt = false
+
+[functions.admin-update-question]
+verify_jwt = false
+
+[functions.arena-create-match]
+verify_jwt = true
+
+[functions.arena-accept-invite]
+verify_jwt = true
+
+[functions.arena-get-match]
+verify_jwt = true
+
+[functions.arena-submit-answer]
+verify_jwt = true
+
+[functions.arena-complete-match]
+verify_jwt = true
+
+[functions.arena-list-summary]
+verify_jwt = true
+
+[functions.arena-find-match]
+verify_jwt = true
+[functions.submit-result]
+verify_jwt = true
