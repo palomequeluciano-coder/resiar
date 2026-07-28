@@ -255,6 +255,27 @@ import {
 } from './services/googleAuth.js';
 
 import {
+  getQuestionImagesBaseUrl,
+  normalizeQuestionImagePath,
+  getQuestionImagePaths,
+  getQuestionImageLabel,
+  resiarGetStoredQuestionImagesCacheVersion,
+  resiarSetQuestionImagesCacheVersion
+} from './utils/questionImages.js';
+import { renderQuestionImage as renderQuestionImageBase, renderQuestionTextWithImageRef } from './ui/questionImages.js';
+import { configureMarkedQuestions } from './services/markedQuestions.js';
+import {
+  resiarOptionTextForSearch,
+  resiarQuestionCaseTextForSearch,
+  resiarQuestionSearchProxy,
+  resiarEnhanceQuestionSearchPool,
+  resiarCleanSearchPreviewText,
+  resiarSearchPreviewTextFromQuestion,
+  resiarQuestionSearchHaystack,
+  resiarQuestionMatchesSearchQuery
+} from './utils/questionSearchText.js';
+
+import {
   configureProfile,
   abrirPerfil,
   switchProfileTab,
@@ -301,6 +322,23 @@ configureAccess({
 configureSoundSystem({
   mostrarToast,
   canUseCustomSounds: () => canUseCustomSounds()
+});
+
+const {
+  resiarMarkedQuestionsUserScope,
+  resiarMarkedQuestionsStorageKey,
+  resiarNormalizeQuestionId,
+  resiarQuestionIdAtIndex,
+  resiarReadPersistentMarkedIds,
+  resiarWritePersistentMarkedIds,
+  resiarHydratePersistentMarkedForExam,
+  resiarPersistMarkedIndexSet
+} = configureMarkedQuestions({
+  getCurrentUser: () => currentUser,
+  getExamen: () => examen,
+  readJson,
+  writeJson,
+  removeStorage
 });
 
 try {
@@ -791,104 +829,6 @@ let currentProfile = null;
    - Siguen siendo localStorage, no Supabase.
    - Se guardan por usuario y por ID real de pregunta, no por índice.
 ══════════════════════════════ */
-const RESIAR_MARKED_QUESTIONS_STORAGE_PREFIX = 'resiar_marked_questions_v1';
-
-function resiarMarkedQuestionsUserScope() {
-  const raw = currentUser?.id || currentUser?.email || currentUser?.user_metadata?.email || 'anon';
-  return String(raw || 'anon').replace(/[^a-zA-Z0-9@._:-]/g, '_');
-}
-
-function resiarMarkedQuestionsStorageKey() {
-  return `${RESIAR_MARKED_QUESTIONS_STORAGE_PREFIX}:${resiarMarkedQuestionsUserScope()}`;
-}
-
-function resiarNormalizeQuestionId(value) {
-  const id = String(value == null ? '' : value).trim();
-  return id || null;
-}
-
-function resiarQuestionIdAtIndex(index) {
-  const idx = Number(index);
-  if (!Number.isFinite(idx) || idx < 0) return null;
-  return resiarNormalizeQuestionId(examen?.[idx]?.id);
-}
-
-function resiarReadPersistentMarkedIds() {
-  if (!currentUser) return new Set();
-  const raw = readJson(resiarMarkedQuestionsStorageKey(), null);
-  const values = Array.isArray(raw)
-    ? raw
-    : Array.isArray(raw?.ids)
-      ? raw.ids
-      : [];
-
-  const ids = new Set();
-  for (const value of values) {
-    const id = resiarNormalizeQuestionId(value);
-    if (id) ids.add(id);
-  }
-  return ids;
-}
-
-function resiarWritePersistentMarkedIds(ids) {
-  if (!currentUser) return false;
-  const clean = [...(ids instanceof Set ? ids : new Set())]
-    .map(resiarNormalizeQuestionId)
-    .filter(Boolean)
-    .slice(0, 5000);
-
-  const key = resiarMarkedQuestionsStorageKey();
-  if (!clean.length) return removeStorage(key);
-
-  return writeJson(key, {
-    version: 1,
-    userId: currentUser?.id || null,
-    ids: clean,
-    updatedAt: new Date().toISOString()
-  });
-}
-
-function resiarHydratePersistentMarkedForExam(baseMarked = new Set()) {
-  const persistentIds = resiarReadPersistentMarkedIds();
-  const next = new Set();
-
-  if (baseMarked instanceof Set) {
-    for (const rawIdx of baseMarked) {
-      const idx = Number(rawIdx);
-      if (Number.isInteger(idx) && idx >= 0 && idx < examen.length) {
-        next.add(idx);
-      }
-    }
-  }
-
-  examen.forEach((question, idx) => {
-    const id = resiarNormalizeQuestionId(question?.id);
-    if (id && persistentIds.has(id)) next.add(idx);
-  });
-
-  return next;
-}
-
-function resiarPersistMarkedIndexSet(indexSet) {
-  if (!currentUser || !Array.isArray(examen) || !examen.length) return false;
-
-  const ids = resiarReadPersistentMarkedIds();
-  const examIds = examen
-    .map((question) => resiarNormalizeQuestionId(question?.id))
-    .filter(Boolean);
-
-  // Para el examen actual, el Set de índices es la fuente de verdad.
-  // No tocamos marcas de preguntas que no estén en este examen.
-  for (const id of examIds) ids.delete(id);
-
-  const marked = indexSet instanceof Set ? indexSet : new Set();
-  for (const rawIdx of marked) {
-    const id = resiarQuestionIdAtIndex(rawIdx);
-    if (id) ids.add(id);
-  }
-
-  return resiarWritePersistentMarkedIds(ids);
-}
 
 function resiarSetMarkedIndices(value, options = {}) {
   const input = value instanceof Set ? value : new Set();
@@ -1270,96 +1210,9 @@ try { window.getNotesStorageInfo = getNotesStorageInfo; } catch (_) {}
 // armamos un proxy local con enunciado + opciones. Al abrir el resultado,
 // v81 ya rehidrata desde get_exam_session_v69, así que el examen no muestra
 // este texto expandido: solo se usa como índice de búsqueda.
-function resiarOptionTextForSearch(question) {
-  if (!question || typeof question !== 'object') return '';
 
-  const chunks = [];
 
-  const append = (value) => {
-    const text = String(value == null ? '' : value).trim();
-    if (text) chunks.push(text);
-  };
 
-  const opciones = question.opciones;
-  if (Array.isArray(opciones)) {
-    opciones.forEach((value, index) => append(`${String.fromCharCode(65 + index)}) ${value}`));
-  } else if (opciones && typeof opciones === 'object') {
-    Object.entries(opciones).forEach(([key, value]) => append(`${String(key).toUpperCase()}) ${value}`));
-  }
-
-  [
-    'opcion_a', 'opcion_b', 'opcion_c', 'opcion_d', 'opcion_e', 'opcion_f',
-    'opcionA', 'opcionB', 'opcionC', 'opcionD', 'opcionE', 'opcionF',
-    'opcion1', 'opcion2', 'opcion3', 'opcion4', 'opcion5', 'opcion6',
-    'A', 'B', 'C', 'D', 'E', 'F',
-    'a', 'b', 'c', 'd', 'e', 'f'
-  ].forEach((key) => {
-    if (Object.prototype.hasOwnProperty.call(question, key)) append(question[key]);
-  });
-
-  return [...new Set(chunks)].join(' · ');
-}
-
-function resiarQuestionCaseTextForSearch(question) {
-  if (!question || typeof question !== 'object') return '';
-
-  const keys = [
-    'pregunta',
-    'enunciado',
-    'texto',
-    'texto_pregunta',
-    'pregunta_texto',
-    'question_text',
-    'questionText',
-    'statement',
-    'stem',
-    'caso',
-    'consigna',
-    'body'
-  ];
-
-  for (const key of keys) {
-    const value = String(question[key] == null ? '' : question[key]).trim();
-    if (value) return value;
-  }
-
-  return '';
-}
-
-function resiarQuestionSearchProxy(question) {
-  if (!question || typeof question !== 'object') return question;
-
-  const optionText = resiarOptionTextForSearch(question);
-  const baseText = resiarQuestionCaseTextForSearch(question);
-
-  if (!baseText && !optionText) return question;
-
-  const searchText = `${baseText}${optionText ? `\n\nOpciones: ${optionText}` : ''}`.trim();
-
-  return {
-    ...question,
-
-    // Se conserva el texto original para depurar si hiciera falta.
-    __resiarOriginalPregunta: question.pregunta,
-    __resiarOriginalEnunciado: question.enunciado,
-    __resiarOriginalTexto: question.texto,
-    __resiarSearchOptionsText: optionText,
-    __resiarSearchCaseText: baseText,
-
-    // reviewSearch.js puede leer distintos campos según la pantalla.
-    // Rellenamos todos para que el resultado vuelva a mostrar el inicio del caso.
-    pregunta: searchText,
-    enunciado: baseText || question.enunciado || question.pregunta || question.texto || '',
-    texto: baseText || question.texto || question.pregunta || question.enunciado || '',
-    preview: baseText,
-    resumen: baseText
-  };
-}
-
-function resiarEnhanceQuestionSearchPool(pool) {
-  if (!Array.isArray(pool)) return [];
-  return pool.map(resiarQuestionSearchProxy);
-}
 
 function resiarTrimSearchVisibleOptionSuffix() {
   try {
@@ -1457,43 +1310,9 @@ function resiarCurrentSearchQueryFromModal(modal) {
   }
 }
 
-function resiarCleanSearchPreviewText(text) {
-  return String(text == null ? '' : text)
-    .replace(/\s+/g, ' ')
-    .replace(/\bOpciones:\s.*$/i, '')
-    .trim();
-}
 
-function resiarSearchPreviewTextFromQuestion(question) {
-  const text = resiarQuestionCaseTextForSearch(question);
-  return resiarCleanSearchPreviewText(text);
-}
 
-function resiarQuestionSearchHaystack(question) {
-  if (!question || typeof question !== 'object') return '';
-  const proxy = resiarQuestionSearchProxy(question) || question;
-  return normalizeSearchText([
-    proxy.pregunta,
-    proxy.enunciado,
-    proxy.texto,
-    proxy.preview,
-    proxy.resumen,
-    proxy.__resiarSearchOptionsText,
-    proxy.tema,
-    proxy.topic,
-    proxy.especialidad,
-    proxy.categoria,
-    proxy.examen,
-    proxy.anio,
-    proxy.año
-  ].filter(Boolean).join(' '));
-}
 
-function resiarQuestionMatchesSearchQuery(question, query) {
-  const q = normalizeSearchText(query);
-  if (!q) return false;
-  return q.split(/\s+/).filter(Boolean).every((token) => resiarQuestionSearchHaystack(question).includes(token));
-}
 
 function resiarSearchPreviewPool(query) {
   let pool = [];
@@ -2572,31 +2391,11 @@ function renderNavGridInto(grid, kind) {
 
 
 
-function getQuestionImagesBaseUrl() {
-  try {
-    const url = window.SUPA_URL || (typeof SUPA_URL !== 'undefined' ? SUPA_URL : '') || (typeof SUPABASE_URL !== 'undefined' ? SUPABASE_URL : '');
-    return String(url || '').replace(/\/$/, '');
-  } catch (_) {
-    return '';
-  }
+function resiarRefreshQuestionImagesCache(version) {
+  return resiarSetQuestionImagesCacheVersion(version || `${Date.now()}`);
 }
 
-const RESIAR_QUESTION_IMAGES_CACHE_VERSION_KEY = 'resiar_question_images_cache_version';
-
-function resiarGetStoredQuestionImagesCacheVersion() {
-  try {
-    return String(localStorage.getItem(RESIAR_QUESTION_IMAGES_CACHE_VERSION_KEY) || '').trim();
-  } catch (_) {
-    return '';
-  }
-}
-
-function resiarSetQuestionImagesCacheVersion(version) {
-  const clean = String(version || Date.now()).trim() || String(Date.now());
-  try { localStorage.setItem(RESIAR_QUESTION_IMAGES_CACHE_VERSION_KEY, clean); } catch (_) {}
-  try { window.__resiarQuestionImagesCacheVersion = clean; } catch (_) {}
-  return clean;
-}
+try { window.resiarRefreshQuestionImagesCache = resiarRefreshQuestionImagesCache; } catch (_) {}
 
 function resiarGetQuestionImagesCacheVersion() {
   const bankVersion = String(_resiarQuestionBankVersion || window.__resiarQuestionBankVersion || RESIAR_QB_VERSION_FALLBACK || '').trim();
@@ -2605,22 +2404,11 @@ function resiarGetQuestionImagesCacheVersion() {
   return bankVersion || imageVersion || 'v1';
 }
 
-function resiarRefreshQuestionImagesCache(version) {
-  return resiarSetQuestionImagesCacheVersion(version || `${Date.now()}`);
-}
-
 function resiarAppendQuestionImageCacheParam(url) {
   const value = resiarGetQuestionImagesCacheVersion();
   if (!url || !value) return url;
   const separator = url.includes('?') ? '&' : '?';
   return `${url}${separator}rv=${encodeURIComponent(value)}`;
-}
-
-try { window.resiarRefreshQuestionImagesCache = resiarRefreshQuestionImagesCache; } catch (_) {}
-
-function normalizeQuestionImagePath(path) {
-  const value = String(path || '').trim();
-  return value || '';
 }
 
 function getQuestionImageUrlFromPath(path) {
@@ -2632,109 +2420,13 @@ function getQuestionImageUrlFromPath(path) {
   return resiarAppendQuestionImageCacheParam(`${baseUrl}/storage/v1/object/public/question-images/${clean}`);
 }
 
-function getQuestionImagePaths(p) {
-  const paths = [];
-  const rawImages = p?.imagenes_paths;
-
-  if (Array.isArray(rawImages)) {
-    rawImages.forEach(path => {
-      const clean = normalizeQuestionImagePath(path);
-      if (clean && !paths.includes(clean)) paths.push(clean);
-    });
-  } else if (typeof rawImages === 'string') {
-    try {
-      const parsed = JSON.parse(rawImages);
-      if (Array.isArray(parsed)) {
-        parsed.forEach(path => {
-          const clean = normalizeQuestionImagePath(path);
-          if (clean && !paths.includes(clean)) paths.push(clean);
-        });
-      }
-    } catch (_) {
-      const clean = normalizeQuestionImagePath(rawImages);
-      if (clean && !paths.includes(clean)) paths.push(clean);
-    }
-  }
-
-  const legacyPath = normalizeQuestionImagePath(p?.imagen_path);
-  if (legacyPath && !paths.includes(legacyPath)) paths.unshift(legacyPath);
-
-  return paths;
-}
-
 function getQuestionImageUrl(p) {
   const firstPath = getQuestionImagePaths(p)[0];
   return getQuestionImageUrlFromPath(firstPath);
 }
 
-function getQuestionImageLabel(path, index, total) {
-  const clean = String(path || '').split('/').pop() || '';
-  const withoutExt = clean.replace(/\.[^.]+$/, '');
-  const match = withoutExt.match(/_([0-9]+[a-zA-Z]?)$/);
-  if (match?.[1]) return `Imagen ${match[1]}`;
-  return total > 1 ? `Imagen ${index + 1}` : 'Imagen';
-}
-
 function renderQuestionImage(p) {
-  const paths = getQuestionImagePaths(p);
-  if (!paths.length) return '';
-
-  const safeId = String(p?.id || 'actual').replace(/[^a-zA-Z0-9_-]/g, '_');
-  const total = paths.length;
-  const altBase = escapeHtml(p?.imagen_alt || 'Imagen de la pregunta');
-  const caption = p?.imagen_caption
-    ? `<div class="q-img-caption">${escapeHtml(p.imagen_caption)}</div>`
-    : '';
-
-  const items = paths.map((path, index) => {
-    const url = getQuestionImageUrlFromPath(path);
-    if (!url) return '';
-    const label = escapeHtml(getQuestionImageLabel(path, index, total));
-    const alt = total > 1 ? `${altBase} ${index + 1}` : altBase;
-    return `
-      <a href="${url}" target="_blank" rel="noopener" class="q-img-link q-img-item">
-        ${total > 1 ? `<span class="q-img-label">${label}</span>` : ''}
-        <img
-          src="${url}"
-          alt="${alt}"
-          class="q-img"
-          loading="lazy"
-          decoding="async"
-          onerror="const item=this.closest('.q-img-item'); const fig=this.closest('figure'); if(item) item.remove(); if(fig && !fig.querySelector('.q-img-item')) fig.remove();"
-        >
-      </a>
-    `;
-  }).join('');
-
-  if (!items.trim()) return '';
-
-  return `
-    <figure class="q-img-wrap ${total > 1 ? 'q-img-wrap-multiple' : ''}" id="imagen-pregunta-${safeId}">
-      ${total > 1 ? `<div class="q-img-head"><span>Imágenes de referencia</span><small>${total} archivos</small></div>` : ''}
-      <div class="q-img-grid ${total > 1 ? 'q-img-grid-multiple' : ''}">
-        ${items}
-      </div>
-      ${caption}
-    </figure>
-  `;
-}
-
-function renderQuestionTextWithImageRef(text, p) {
-  const safe = escapeHtml(text || '');
-  if (!getQuestionImagePaths(p).length) return safe;
-
-  const safeId = String(p?.id || 'actual').replace(/[^a-zA-Z0-9_-]/g, '_');
-
-  return safe.replace(
-    /\[(imagen|ver imagen|figura|ver figura)\]/gi,
-    `<button
-      type="button"
-      class="q-img-ref"
-      onclick="document.getElementById('imagen-pregunta-${safeId}')?.scrollIntoView({behavior:'smooth',block:'center'})"
-    >
-      Ver imagen
-    </button>`
-  );
+  return renderQuestionImageBase(p, { getQuestionImageUrlFromPath });
 }
 
 
