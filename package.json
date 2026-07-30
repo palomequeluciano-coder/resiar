@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
     "dev": "vite",
     "build": "node scripts/clean-dist.mjs && vite build",
     "preview": "vite preview",
@@ -13,7 +15,9 @@
     "predeploy": "npm run build && node scripts/predeploy-check.mjs"
   },
   "devDependencies": {
-    "vite": "^8.0.10"
+    "jsdom": "^30.0.1",
+    "vite": "^8.0.10",
+    "vitest": "^4.1.10"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.4"

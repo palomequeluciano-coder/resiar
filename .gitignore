@@ -37,3 +37,6 @@ cloudflare-upload/
 
 # Local-only env examples may stay; real env files must not be zipped
 .env.local
+
+# Supabase CLI metadata local (contiene project-ref y datos de la cuenta vinculada)
+supabase/.temp/
