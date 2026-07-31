@@ -150,9 +150,9 @@ function questionChatAvatarHtml(profile, cls) {
 }
 function questionChatQuestionKey(p) {
   syncDeps();
-  const base = String(p?.id || `${p?.examen || 'exam'}_${p?.anio || p?.year || ''}_${typeof getNPregunta === 'function' ? getNPregunta(p) : actual + 1}_${actual + 1}`);
-  const clean = base.toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 90);
-  return clean || ('q_' + (actual + 1));
+  // Chat general: un único canal compartido para todos los usuarios,
+  // ya no se separa por pregunta/examen.
+  return 'general';
 }
 function questionChatChannelName(key, scope) {
   syncDeps();
@@ -160,22 +160,12 @@ function questionChatChannelName(key, scope) {
 }
 function questionChatQuestionLabel(p) {
   syncDeps();
-  const n = (typeof getNPregunta === 'function') ? getNPregunta(p) : (actual + 1);
-  const rawExam = String(p?.examen || '').trim();
-  const anio = p?.anio || p?.año || p?.year || '';
-  let examName = rawExam || 'Examen';
-  try {
-    if (typeof esExamenUnico === 'function' && esExamenUnico(rawExam)) examName = 'Examen Único';
-  } catch(e) {}
-  const alreadyHasYear = anio && examName.includes(String(anio));
-  const isENARM = rawExam.toUpperCase().includes('ENARM');
-  const examLabel = [examName, (!alreadyHasYear && !isENARM && anio) ? anio : null].filter(Boolean).join(' · ') || 'Examen';
-  const questionLabel = `Pregunta ${n}`;
+  // Chat general: mismo canal para todos, ya no describe la pregunta/examen actual.
   return {
-    examLabel,
-    questionLabel,
-    title: `${examLabel} · ${questionLabel}`,
-    sub: `Canal de ${examLabel} · ${questionLabel} · Cloudflare Live · historial corto`
+    examLabel: 'Chat general',
+    questionLabel: '',
+    title: 'Chat general',
+    sub: 'Chat en vivo de Resiar · Cloudflare Live · historial corto'
   };
 }
 function questionChatDockHtml(p) {
@@ -189,7 +179,7 @@ function questionChatDockHtml(p) {
   const scope = questionChatState.scope === 'friends' ? 'friends' : 'public';
   return `
     <div id="qchatRoot" class="qchat-root" data-qkey="${questionChatSafe(key)}">
-      <button id="qchatFab" class="qchat-fab ${unreadCls} ${offlineCls}" data-action="question-chat-toggle" type="button" title="Chat en vivo de esta pregunta">
+      <button id="qchatFab" class="qchat-fab ${unreadCls} ${offlineCls}" data-action="question-chat-toggle" type="button" title="Chat en vivo general">
         <span class="qchat-fab-icon">↗</span>
         <span class="qchat-fab-label">Chat</span>
         <span id="qchatUnreadBadge" class="qchat-unread">${questionChatSafe(unread)}</span>
@@ -208,14 +198,10 @@ function questionChatDockHtml(p) {
             <button id="qchatModePublic" class="${scope === 'public' ? 'active' : ''}" data-action="question-chat-set-scope" data-scope="public" type="button">Público</button>
             <button id="qchatModeFriends" class="${scope === 'friends' ? 'active' : ''}" data-action="question-chat-set-scope" data-scope="friends" type="button">Amigos</button>
           </div>
-          <div class="qchat-tools">
-            <button id="qchatInviteBtn" class="qchat-tool-btn" data-action="question-invite-toggle" type="button" title="Invitar a un amigo a esta pregunta">➕ Invitar</button>
-          </div>
-          <div id="qchatInvitePanel" class="qchat-invite-panel ${questionChatState.inviteOpen ? 'open' : ''}">${questionInvitePanelHtml()}</div>
           <div class="qchat-limits"><span><strong>${QUESTION_CHAT_LIMITS.maxParticipants}</strong> máx · <strong>${QUESTION_CHAT_LIMITS.maxChars}</strong> caract. · últimos mensajes recientes</span><span id="qchatConnDot">•</span></div>
           <div class="qchat-presence"><span class="qchat-presence-label">Conectados</span><div id="qchatAvatars" class="qchat-avatars"></div><span id="qchatCount" class="qchat-count">0 conectados</span></div>
           <div id="qchatTyping" class="qchat-typing" aria-live="polite"></div>
-          <div id="qchatMessages" class="qchat-messages"><div class="qchat-empty">Abrí el chat para conversar sobre esta pregunta. Los mensajes recientes viven en Cloudflare, sin escribir el chat en Supabase.</div></div>
+          <div id="qchatMessages" class="qchat-messages"><div class="qchat-empty">Abrí el chat para conversar con toda la comunidad. Los mensajes recientes viven en Cloudflare, sin escribir el chat en Supabase.</div></div>
           <form class="qchat-form" data-submit-action="question-chat-send">
             <div class="qchat-input-wrap">
               <textarea id="qchatInput" class="qchat-input" maxlength="${QUESTION_CHAT_LIMITS.maxChars}" rows="1" placeholder="Escribir mensaje en vivo…" data-input-action="question-chat-typing" data-keydown-action="question-chat-maybe-send"></textarea>
@@ -755,7 +741,7 @@ function questionChatPaintMessages() {
   const box = document.getElementById('qchatMessages');
   if (!box) return;
   if (!questionChatState.messages.length) {
-    box.innerHTML = `<div class="qchat-empty">${questionChatState.scope === 'friends' ? 'Modo amigos: solo se muestran mensajes de tus amigos conectados a esta pregunta.' : 'Modo público: todos los usuarios conectados a esta pregunta pueden participar.'}<br>No hay mensajes recientes guardados en Cloudflare.</div>`;
+    box.innerHTML = `<div class="qchat-empty">${questionChatState.scope === 'friends' ? 'Modo amigos: solo se muestran mensajes de tus amigos conectados al chat.' : 'Modo público: todos los usuarios conectados al chat general pueden participar.'}<br>No hay mensajes recientes guardados en Cloudflare.</div>`;
     return;
   }
   box.innerHTML = questionChatState.messages.map(m => {
