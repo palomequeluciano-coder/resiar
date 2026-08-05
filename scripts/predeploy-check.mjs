@@ -7,6 +7,11 @@ const jsOnly = process.argv.includes('--js-only');
 const srcDir = join(root, 'src');
 const scriptsDir = join(root, 'scripts');
 const distDir = join(root, 'dist');
+// El build (ver vite.config.js) genera el sitio anidado bajo esta subcarpeta
+// para que la estructura física coincida con la ruta pública real
+// (https://resiarg.com.ar/examenes-medicos/). Todos los checks de "¿está
+// completo el build?" deben mirar acá, no en la raíz de dist/.
+const publishDir = join(distDir, 'examenes-medicos');
 
 const formatBytes = (bytes) => {
   const units = ['B', 'KB', 'MB', 'GB'];
@@ -63,14 +68,14 @@ info('sintaxis OK.');
 
 if (jsOnly) process.exit(0);
 
-if (!existsSync(distDir)) {
-  fail('no existe dist/. Ejecutá npm run build antes de subir a Cloudflare.');
+if (!existsSync(publishDir)) {
+  fail('no existe dist/examenes-medicos/. Ejecutá npm run build antes de subir a Cloudflare.');
   process.exit(process.exitCode);
 }
 
 const distFiles = walk(distDir);
 const totalSize = distFiles.reduce((sum, file) => sum + statSync(file).size, 0);
-const assetsDir = join(distDir, 'assets');
+const assetsDir = join(publishDir, 'assets');
 const assetFiles = walk(assetsDir);
 const jsAssets = assetFiles.filter((file) => file.endsWith('.js'));
 const cssAssets = assetFiles.filter((file) => file.endsWith('.css'));
@@ -80,12 +85,12 @@ const indexCssAssets = cssAssets.filter((file) => /(^|[/\\])index-[^/\\]+\.css$/
 info(`dist total: ${formatBytes(totalSize)} (${distFiles.length} archivos).`);
 info(`assets: ${assetFiles.length}; JS: ${jsAssets.length}; CSS: ${cssAssets.length}.`);
 
-if (!existsSync(join(distDir, 'index.html'))) {
-  fail('dist/index.html no existe. El build no está completo.');
+if (!existsSync(join(publishDir, 'index.html'))) {
+  fail('dist/examenes-medicos/index.html no existe. El build no está completo.');
 }
 
 for (const forbidden of ['node_modules', 'src', '.env', '.env.local']) {
-  if (existsSync(join(distDir, forbidden))) {
+  if (existsSync(join(distDir, forbidden)) || existsSync(join(publishDir, forbidden))) {
     fail(`dist/ contiene ${forbidden}. No subas dependencias, fuentes ni secretos.`);
   }
 }
