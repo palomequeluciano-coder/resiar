@@ -40,3 +40,4 @@ cloudflare-upload/
 
 # Supabase CLI metadata local (contiene project-ref y datos de la cuenta vinculada)
 supabase/.temp/
+.wrangler/
