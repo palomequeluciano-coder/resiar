@@ -1,6 +1,7 @@
 import { escapeHtml, markdownToHtml } from './utils/sanitize.js';
 import { esRespuestaAnulada } from './utils/examAnswers.js';
 import { configureExamNav } from './ui/examNav.js';
+import { configureRacha } from './ui/racha.js';
 import { renderQuestionRepeatedBanner } from './utils/questionRepeats.js';
 import {
   getCanonicalOptionEntries,
@@ -2376,72 +2377,19 @@ function abrirReporteActual() {
 }
 
 // ── RACHA PILL ──
-function resiarEvaluationCountsForStreak(evaluation) {
-  if (!evaluation || !evaluation.answered) return false;
-  return evaluation.isAnnulled === true || evaluation.evaluable === true;
-}
-
-function resiarFindRachaAnchorIndex() {
-  const total = Array.isArray(examen) ? examen.length : 0;
-  if (!total || !Array.isArray(respuestas)) return -1;
-
-  const preferred = Number.isInteger(_resiarLastAnsweredIndex) && _resiarLastAnsweredIndex >= 0
-    ? _resiarLastAnsweredIndex
-    : actual;
-  const boundedPreferred = Math.max(0, Math.min(Number(preferred) || 0, total - 1));
-  if (resiarEvaluationCountsForStreak(resiarEvaluateQuestionAnswer(boundedPreferred))) return boundedPreferred;
-
-  // La racha debe seguir el último bloque de respuestas efectivamente corregidas,
-  // no el último índice del array. `respuestas` se inicializa con el largo total
-  // del examen; por eso mirar `respuestas.length - 1` devolvía 0 mientras quedaran
-  // preguntas finales sin responder.
-  for (let i = total - 1; i >= 0; i--) {
-    if (resiarEvaluationCountsForStreak(resiarEvaluateQuestionAnswer(i))) return i;
-  }
-  return -1;
-}
-
-function resiarCalcularRachaCorrectas() {
-  const anchor = resiarFindRachaAnchorIndex();
-  if (anchor < 0) return 0;
-
-  let streak = 0;
-  for (let i = anchor; i >= 0; i--) {
-    const evaluation = resiarEvaluateQuestionAnswer(i);
-
-    // Saltarse preguntas no respondidas permite que la racha refleje respuestas
-    // correctas consecutivas aunque el usuario haya navegado o dejado huecos.
-    if (!evaluation.answered) continue;
-    if (evaluation.isAnnulled) continue;
-    if (!evaluation.evaluable) break;
-
-    if (evaluation.isCorrect) streak++;
-    else break;
-  }
-  return streak;
-}
-
-function actualizarRachaPill() {
-  const streak = resiarCalcularRachaCorrectas();
-  const pill = document.getElementById('rachaPill');
-  const num = document.getElementById('rachaNum');
-  const fire = document.getElementById('rachaFire');
-  if (!pill || !num) return;
-  num.textContent = streak;
-  // Color dinámico según racha
-  if (streak >= 10) {
-    num.style.color = '#f97316'; // naranja intenso
-    if (fire) fire.style.fontSize = '1.3rem';
-  } else if (streak >= 5) {
-    num.style.color = 'var(--amber)';
-    if (fire) fire.style.fontSize = '1.1rem';
-  } else {
-    num.style.color = streak > 0 ? 'var(--amber)' : 'var(--text3)';
-    if (fire) fire.style.fontSize = '1rem';
-  }
-  pill.classList.toggle('vis', examen.length > 0);
-}
-
+// Extraída a ui/racha.js siguiendo el patrón configure().
+const {
+  resiarCalcularRachaCorrectas,
+  actualizarRachaPill,
+  renderRacha
+} = configureRacha({
+  getExamen: () => examen,
+  getRespuestas: () => respuestas,
+  getActual: () => actual,
+  getLastAnsweredIndex: () => _resiarLastAnsweredIndex,
+  evaluateQuestionAnswer: (i) => resiarEvaluateQuestionAnswer(i),
+  getCorrectas: () => correctas
+});
 
 async function responder(sel) {
   if (respuestas[actual]) return;
@@ -2550,23 +2498,6 @@ function renderHistorial() {
     html += `<div class="hdot ${c}" style="animation-delay:${(i - desde) * 0.03}s"></div>`;
   }
   historial.innerHTML = html;
-}
-
-// ── RACHA ──
-function renderRacha() {
-  const streak = resiarCalcularRachaCorrectas();
-  if (streak < 10) { rachaEl.innerHTML = ""; streakTexto.innerText = ""; return; }
-  let qty = Math.floor(streak / 10), html = "";
-  for (let i = 0; i < qty; i++) html += `<span class="flame" style="font-size:${1 + i * .18}rem">🔥</span>`;
-  rachaEl.innerHTML = html; streakTexto.innerText = streak;
-  if (correctas === examen.length) boom();
-}
-
-function boom() {
-  const el = document.createElement("div");
-  el.className = "explosion";
-  document.body.appendChild(el);
-  setTimeout(() => el.remove(), 1000);
 }
 
 // ── STATS LIVE ──
