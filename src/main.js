@@ -49,18 +49,18 @@ import { createExamPdfExporter } from './utils/pdfExport.js';
 import { configureViewStateController } from './state/viewState.js';
 import {
   configureStats,
-  getStats as statsGetStats,
-  saveStats as statsSaveStats,
-  actualizarBadge as statsActualizarBadge,
-  guardarSesion as statsGuardarSesion,
-  resiarResetFinalSaveGuard as statsResetFinalSaveGuard,
-  resiarSaveFinalSessionOnce as statsSaveFinalSessionOnce,
-  buildAnswerPayload as statsBuildAnswerPayload,
-  guardarSesionEnSupabase as statsGuardarSesionEnSupabase,
-  abrirModalStats as statsAbrirModalStats,
-  cerrarModalStats as statsCerrarModalStats,
-  renderModalStats as statsRenderModalStats,
-  getStatsStorageInfo as statsGetStatsStorageInfo
+  getStats,
+  saveStats,
+  actualizarBadge,
+  guardarSesion,
+  resiarResetFinalSaveGuard,
+  resiarSaveFinalSessionOnce,
+  buildAnswerPayload,
+  guardarSesionEnSupabase,
+  abrirModalStats,
+  cerrarModalStats,
+  renderModalStats,
+  getStatsStorageInfo
 } from './ui/stats.js';
 
 import {
@@ -2882,19 +2882,6 @@ configureStats({
   isChallengeActive: () => !!window._desafioActivo,
   guardarResultadoDesafio: () => guardarResultadoDesafio()
 });
-
-function getStats() { return statsGetStats(); }
-function saveStats(d) { return statsSaveStats(d); }
-function actualizarBadge() { return statsActualizarBadge(); }
-function guardarSesion() { return statsGuardarSesion(); }
-function resiarResetFinalSaveGuard() { return statsResetFinalSaveGuard(); }
-function resiarSaveFinalSessionOnce() { return statsSaveFinalSessionOnce(); }
-function buildAnswerPayload() { return statsBuildAnswerPayload(); }
-async function guardarSesionEnSupabase(pct, respondidas, espData) { return statsGuardarSesionEnSupabase(pct, respondidas, espData); }
-function abrirModalStats() { return statsAbrirModalStats(); }
-function cerrarModalStats() { return statsCerrarModalStats(); }
-function renderModalStats() { return statsRenderModalStats(); }
-function getStatsStorageInfo() { return statsGetStatsStorageInfo(); }
 
 async function cargarPerformanceRowsRemotas(user) {
   if (!user || !sb || typeof sb.from !== 'function') return { rows: [], source: 'none' };
