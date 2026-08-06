@@ -19,10 +19,11 @@ Cloudflare Workers (`resiarg`), auto-deploy en push a `main`. App vive en `resia
 3. Tests nuevos: `access.js`, `secureExamSession.js`, `authSession.js` → suite en 86 tests, verde.
 4. Limpieza `main.js` pasada 1: borrado `ui/examNavigation.js` (144 líneas, muerto, divergido). Borrados 12 wrappers redundantes de `ui/stats.js` en `main.js`. 6.201→6.188 líneas.
 5. Limpieza `main.js` pasada 2: extraída la nav de examen (`getQuestionNavClass`, `getOptimizedNavRanges`, `renderNavDotsOptimized`, `getNavRenderKey`, `syncNavDotState`, `renderNavGridInto`) a `ui/examNav.js` con patrón `configure()`. `esRespuestaAnulada` extraída (pura) a `utils/examAnswers.js`. 13 tests nuevos (`examNav.test.js`). Suite en 99 tests. `main.js` 6.188→6.107 líneas.
+6. Limpieza `main.js` pasada 3: extraídas las funciones de racha/streak (`resiarEvaluationCountsForStreak`, `resiarFindRachaAnchorIndex`, `resiarCalcularRachaCorrectas`, `actualizarRachaPill`, `renderRacha`, `boom`) a `ui/racha.js` con patrón `configure()` (deps: `getExamen`, `getRespuestas`, `getActual`, `getLastAnsweredIndex`, `evaluateQuestionAnswer`, `getCorrectas`). 8 tests nuevos (`racha.test.js`). Suite en 107 tests. `main.js` 6.107→6.038 líneas.
 
 ## Pendiente / próximo paso
-- Seguir limpieza de `main.js`. Candidato mapeado para la próxima pasada: funciones de racha/streak (`resiarEvaluationCountsForStreak`, `resiarFindRachaAnchorIndex`, `resiarCalcularRachaCorrectas`, `actualizarRachaPill`, `renderRacha`, `boom`, ~líneas 2379-2570) a un módulo nuevo `ui/racha.js` con el mismo patrón `configure()` (inyectando `getExamen`, `getRespuestas`, `getActual`, deps de DOM). Verificar primero cuánto dependen de `resiarEvaluateQuestionAnswer` antes de tocarlas.
-- Wrappers de `authSession` en `main.js` (~4020-4030, línea shifteada por los cambios recientes — re-grep antes de tocar) son indirección similar a stats pero con ~15 call sites dispersos por hoisting — más riesgo, dejar para sesión con margen de verificación manual.
+- Seguir limpieza de `main.js`. Wrappers de `authSession` en `main.js` (re-grep antes de tocar, la línea shiftea con cada pasada) son indirección similar a stats pero con ~15 call sites dispersos por hoisting — más riesgo, dejar para sesión con margen de verificación manual.
+- Después de eso, revisar si quedan más bloques cohesivos y sin muchos call sites dispersos (buen candidato = pocas dependencias externas, usado solo dentro de main.js) antes de meterse con algo más grande.
 - No tocar `resiarEvaluateQuestionAnswer` (corrección de examen) sin tests con datos reales.
 - Leaked Password Protection de Supabase: bloqueada por plan Free.
 
