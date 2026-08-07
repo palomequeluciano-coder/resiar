@@ -210,11 +210,12 @@ import {
 } from './services/questionBankLoader.js';
 
 import {
-  resiarParseOrderNumber as defaultResiarParseOrderNumber,
+  resiarParseOrderNumber,
   resiarQuestionOriginalOrderValue as defaultResiarQuestionOriginalOrderValue,
   resiarQuestionStableFallback as defaultResiarQuestionStableFallback,
   resiarStableOriginalQuestionCompare as defaultResiarStableOriginalQuestionCompare,
-  resiarSortByOriginalExamOrder as defaultResiarSortByOriginalExamOrder
+  resiarSortByOriginalExamOrder,
+  resiarGetNPregunta
 } from './utils/questionOrder.js';
 
 import {
@@ -245,11 +246,9 @@ import {
   summarizeAnswers
 } from './services/examSessionDraft.js';
 
-let resiarParseOrderNumber = defaultResiarParseOrderNumber;
 let resiarQuestionOriginalOrderValue = defaultResiarQuestionOriginalOrderValue;
 let resiarQuestionStableFallback = defaultResiarQuestionStableFallback;
 let resiarStableOriginalQuestionCompare = defaultResiarStableOriginalQuestionCompare;
-let resiarSortByOriginalExamOrder = defaultResiarSortByOriginalExamOrder;
 
 import {
   configureGoogleAuth,
@@ -784,10 +783,7 @@ function cargarChecklist() {
     }).join('');
 }
 
-// Map: examen -> Map(id -> numero) — built after cargarPreguntas
-let _numeroMap = {};
 function buildNumeroMap(pregs) {
-  _numeroMap = {};
   // Group by examen + anio so each year starts at 1
   const groups = {};
   pregs.forEach(p => {
@@ -798,29 +794,18 @@ function buildNumeroMap(pregs) {
   });
   // Assign 1-based number within each group sorted by num_original
   Object.keys(groups).forEach(key => {
-    const sorted = (typeof resiarSortByOriginalExamOrder === 'function') ? resiarSortByOriginalExamOrder(groups[key]) : groups[key].slice().sort((a, b) => (a.num_original ?? 0) - (b.num_original ?? 0));
+    const sorted = resiarSortByOriginalExamOrder(groups[key]);
     sorted.forEach((p, idx) => {
       try { p._resiarOriginalGroupRank = idx + 1; } catch(_) {}
-      _numeroMap[p.id] = idx + 1;
     });
   });
 }
+// getNPregunta: ver src/utils/questionOrder.js (resiarGetNPregunta). Se
+// mantiene este nombre corto porque se usa en decenas de templates de
+// main.js; antes había además una segunda implementación que la pisaba en
+// runtime (ver historial), ya consolidada acá.
 function getNPregunta(p) {
-  // Mostrar sólo el número visible, no el ID completo.
-  // Ej: CABA_2006_15 debe verse como “Pregunta 15”.
-  const candidates = [
-    p?.num_original, p?.numero, p?.nro, p?.nro_pregunta,
-    p?.pregunta_numero, p?.numero_pregunta, p?.orden,
-    p?.orden_original, p?.question_number, p?.question_no
-  ];
-  for (const c of candidates) {
-    const n = (typeof resiarParseOrderNumber === 'function') ? resiarParseOrderNumber(c) : Number(c);
-    if (Number.isFinite(n)) return n;
-  }
-  const idNum = (typeof resiarParseOrderNumber === 'function') ? resiarParseOrderNumber(p?.id) : Number.NaN;
-  if (Number.isFinite(idNum)) return idNum;
-  if (p && _numeroMap[p.id] !== undefined) return _numeroMap[p.id];
-  return p?.id ?? '–';
+  return resiarGetNPregunta(p);
 }
 
 // ── ESTADO ──
@@ -5837,72 +5822,12 @@ installResiarSoundSystemExtension({
 
 /* Limpieza de chrome de examen centralizada en src/state/viewState.js. */
 
-/* ===== resiar-question-order-stability-script ===== */
+/* ===== resiar-specific-filter-active-patch =====
+   Nota: hasta 2026-08-06 esto vivía en el mismo IIFE que
+   "resiar-question-order-stability-script" (orden de preguntas), que ya
+   se consolidó en src/utils/questionOrder.js. Este patch de
+   resiarIsSpecificFilterActive es un tema aparte, se deja intacto. */
 (function(){
-  function parseLastOrderNumber(v){
-    if (v == null || v === '') return Number.POSITIVE_INFINITY;
-    if (typeof v === 'number' && Number.isFinite(v)) return v;
-    const s = String(v).trim();
-    const exact = Number(s.replace(',', '.'));
-    if (Number.isFinite(exact)) return exact;
-    const m = s.match(/\d+/g);
-    return m && m.length ? Number(m[m.length - 1]) : Number.POSITIVE_INFINITY;
-  }
-  window.resiarParseOrderNumber = parseLastOrderNumber;
-  try { resiarParseOrderNumber = parseLastOrderNumber; } catch(_) {}
-
-  function questionNumberFromIdOrFields(p){
-    const fields = ['num_original','numero','nro','nro_pregunta','pregunta_numero','numero_pregunta','orden','orden_original','question_number','question_no'];
-    for (const f of fields) {
-      const n = parseLastOrderNumber(p && p[f]);
-      if (Number.isFinite(n)) return n;
-    }
-    const idN = parseLastOrderNumber(p && p.id);
-    if (Number.isFinite(idN)) return idN;
-    const rank = parseLastOrderNumber(p && p._resiarOriginalGroupRank);
-    if (Number.isFinite(rank)) return rank;
-    return Number.POSITIVE_INFINITY;
-  }
-  window.getNPregunta = function(p){
-    const n = questionNumberFromIdOrFields(p);
-    if (Number.isFinite(n)) return n;
-    return (p && p.id) ? p.id : '–';
-  };
-  try { getNPregunta = window.getNPregunta; } catch(_) {}
-
-  function yearOf(p){
-    const y = p && (p.anio ?? p.año ?? p.year);
-    if (y !== undefined && y !== null && y !== '') return String(y);
-    const m = String((p && p.examen) || '').match(/\b(19|20)\d{2}\b/);
-    return m ? m[0] : '';
-  }
-  function bankOf(p){
-    const ex = String((p && p.examen) || '');
-    try { if (typeof esProvinciaBsAs === 'function' && esProvinciaBsAs(ex)) return '__PROVINCIA_BA__'; } catch(_) {}
-    try { if (typeof esExamenUnico === 'function' && esExamenUnico(ex)) return '__EU__'; } catch(_) {}
-    return ex || 'Sin examen';
-  }
-  function stableTie(p){
-    const load = parseLastOrderNumber(p && p._resiarLoadIndex);
-    if (Number.isFinite(load)) return load;
-    return String((p && p.id) || '').toLowerCase();
-  }
-  window.resiarSortByOriginalExamOrder = function(list){
-    return (Array.isArray(list) ? list : []).slice().sort(function(a,b){
-      const ga = bankOf(a) + '::' + yearOf(a);
-      const gb = bankOf(b) + '::' + yearOf(b);
-      if (ga !== gb) return ga.localeCompare(gb, 'es', { numeric:true, sensitivity:'base' });
-      const oa = questionNumberFromIdOrFields(a);
-      const ob = questionNumberFromIdOrFields(b);
-      if (oa !== ob) return oa - ob;
-      const ta = stableTie(a), tb = stableTie(b);
-      if (typeof ta === 'number' && typeof tb === 'number' && ta !== tb) return ta - tb;
-      return String(ta).localeCompare(String(tb), 'es', { numeric:true, sensitivity:'base' });
-    });
-  };
-  try { resiarSortByOriginalExamOrder = window.resiarSortByOriginalExamOrder; } catch(_) {}
-  try { if (Array.isArray(preguntas) && typeof buildNumeroMap === 'function') buildNumeroMap(preguntas); } catch(_) {}
-
   const previousSpecific = window.resiarIsSpecificFilterActive;
   window.resiarIsSpecificFilterActive = function(){
     try {
