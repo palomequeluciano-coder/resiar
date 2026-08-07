@@ -22,8 +22,42 @@ Cloudflare Workers (`resiarg`), auto-deploy en push a `main`. App vive en `resia
 6. Limpieza `main.js` pasada 3: extraídas las funciones de racha/streak (`resiarEvaluationCountsForStreak`, `resiarFindRachaAnchorIndex`, `resiarCalcularRachaCorrectas`, `actualizarRachaPill`, `renderRacha`, `boom`) a `ui/racha.js` con patrón `configure()` (deps: `getExamen`, `getRespuestas`, `getActual`, `getLastAnsweredIndex`, `evaluateQuestionAnswer`, `getCorrectas`). 8 tests nuevos (`racha.test.js`). Suite en 107 tests. `main.js` 6.107→6.038 líneas.
 
 ## Pendiente / próximo paso
-- Después de la limpieza de `main.js` (pasadas 1-3), revisar si quedan más bloques cohesivos y sin muchos call sites dispersos (buen candidato = pocas dependencias externas, usado solo dentro de main.js) antes de meterse con algo más grande. `authSession` (ver más abajo) NO es uno de esos candidatos.
-- No tocar `resiarEvaluateQuestionAnswer` (corrección de examen) sin tests con datos reales.
+- **Hallazgo importante (2026-08-06), no resuelto todavía**: en `main.js`
+  hay un IIFE al final del archivo (`resiar-question-order-stability-script`,
+  ~línea 5838) que pisa en runtime `resiarParseOrderNumber`,
+  `resiarSortByOriginalExamOrder` y `getNPregunta` — las mismas funciones
+  que el archivo ya importa limpiamente de `utils/questionOrder.js` más
+  arriba. Es la definición del patrón "hotfix" que hay que evitar: la
+  versión del IIFE es la que REALMENTE corre en prod (pisa a la otra al
+  cargar), y no es un duplicado idéntico:
+  - `resiarParseOrderNumber` sí es 100% idéntica en ambos lados → fusionar
+    es trivial y sin riesgo.
+  - `resiarSortByOriginalExamOrder`: la versión de `utils/questionOrder.js`
+    hace un sort plano por número de orden. La versión del IIFE agrupa
+    primero por `examen + año` (bankOf/yearOf, con lógica especial para
+    Provincia BA y Examen Único) y recién ordena por número DENTRO de cada
+    grupo — esto es lo que hace que la numeración reinicie en 1 por
+    examen/año (ver comentario de `buildNumeroMap`). Son comportamientos
+    distintos, no solo refactors.
+  - `getNPregunta`: la versión del IIFE chequea más campos candidatos
+    (`nro_pregunta`, `pregunta_numero`, `numero_pregunta`, `question_no`) y
+    cae en `p._resiarOriginalGroupRank` en vez de `_numeroMap[p.id]` — en
+    la práctica deberían dar el mismo resultado porque `buildNumeroMap` fija
+    ambos valores, pero no está probado.
+  - **Antes de tocarlo**: escribir tests que comparen el resultado de
+    ambas implementaciones sobre un dataset sintético con varios
+    examen+año mezclados, confirmar que son equivalentes (o entender bien
+    la diferencia), migrar la lógica real (la del IIFE, agrupada) a
+    `utils/questionOrder.js` como implementación canónica con tests, y
+    recién ahí borrar el IIFE completo de `main.js`. No asumir que la
+    versión "limpia" del módulo es la correcta solo porque está mejor
+    ubicada — hoy NO es la que corre en producción.
+- Después de resolver eso, seguir buscando más bloques cohesivos en
+  `main.js` (candidato: `cargarChecklist`/`buildNumeroMap`/`getNPregunta`
+  como unidad de "numeración y checklist de especialidades", pero
+  depende del punto anterior).
+- No tocar `resiarEvaluateQuestionAnswer` (corrección de examen) sin tests
+  con datos reales.
 - Leaked Password Protection de Supabase: bloqueada por plan Free.
 
 ## Revisado y decidido NO tocar (no volver a levantar como pendiente)
