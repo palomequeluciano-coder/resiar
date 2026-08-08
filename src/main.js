@@ -2,6 +2,7 @@ import { escapeHtml, markdownToHtml } from './utils/sanitize.js';
 import { esRespuestaAnulada } from './utils/examAnswers.js';
 import { configureExamNav } from './ui/examNav.js';
 import { configureRacha } from './ui/racha.js';
+import { configureChecklistEspecialidades } from './ui/checklistEspecialidades.js';
 import { renderQuestionRepeatedBanner } from './utils/questionRepeats.js';
 import {
   getCanonicalOptionEntries,
@@ -518,7 +519,6 @@ const historial       = document.getElementById("historial");
 const rachaEl         = document.getElementById("racha");
 const streakTexto     = document.getElementById("streakTexto");
 const filtroExamen    = document.getElementById("filtroExamen");
-const checklistEl     = document.getElementById("checklistEspecialidades");
 const inputTema       = document.getElementById("buscadorTema");
 const sugerenciasBox  = document.getElementById("sugerenciasTemas");
 const modalFinal      = document.getElementById("modalFinal");
@@ -549,7 +549,6 @@ try {
 // Gobernado exclusivamente por resiar-view-state-sidebar-controller.
 
 // ── Especialidades / texto normalizado ──
-const _normEsp = normEspecialidadKey;
 try { window.normalizeSearchText = normalizeSearchText; } catch(_) {}
 
 // ── SUGERENCIAS (ordenadas alfabéticamente) ──
@@ -740,66 +739,17 @@ async function resiarStartSecureExamFromCatalog(pool, options = {}) {
   });
 }
 
-function cargarChecklist() {
-  // Preservar qué valores BD estaban chequeados antes de re-renderizar
-  const prev = new Set();
-  document.querySelectorAll(".espCheck:checked").forEach(cb => {
-    try { JSON.parse(cb.value).forEach(v => prev.add(v)); }
-    catch { prev.add(cb.value); }
-  });
-  const { questions: pool } = resiarBuildExamSelection({
+// cargarChecklist / buildNumeroMap: extraídas a ui/checklistEspecialidades.js
+// siguiendo el patrón configure(). main.js sigue siendo dueño del pool de
+// preguntas (resiarBuildExamSelection) y lo inyecta acá vía closure.
+const { cargarChecklist, buildNumeroMap } = configureChecklistEspecialidades({
+  getUnfilteredPool: () => resiarBuildExamSelection({
     includeSpecialty: false,
     includeTopic: false,
     shuffleWhenUnfiltered: false
-  });
-  // Agrupar usando _normEsp: resuelve tildes, guiones bajos Y sinonimias
-  // (ej: MedicinaGeneral + General + Medicina_familiar → misma clave)
-  const counts = {};    // key normalizada → count
-  const rawValues = {}; // key normalizada → array de valores BD originales
-  pool.forEach(p => {
-    const raw = espLabel(p);
-    const key = _normEsp(raw);
-    counts[key] = (counts[key] || 0) + 1;
-    if (!rawValues[key]) rawValues[key] = [];
-    if (!rawValues[key].includes(raw)) rawValues[key].push(raw);
-  });
-  checklistEl.innerHTML = Object.entries(counts)
-    .sort((a, b) => a[0].localeCompare(b[0], 'es'))  // alfabético
-    .map(([key, n]) => {
-      // El label visual es el canónico del primer valor BD del grupo
-      const displayLabel = formatEsp(rawValues[key][0]);
-      // El value del checkbox guarda todos los valores BD del grupo (JSON)
-      // para poder filtrar correctamente sin tocar la BD
-      const allRaws = JSON.stringify(rawValues[key]);
-      const isPrev = rawValues[key].some(v => prev.has(v));
-      return `
-      <label class="esp-label">
-        <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
-          <input type="checkbox" value="${escapeHtml(allRaws)}" class="espCheck" data-raws="${escapeHtml(allRaws)}" ${isPrev ? 'checked' : ''}>
-          <span style="min-width:0;line-height:1.35;">${displayLabel}</span>
-        </div>
-        <span class="esp-n" style="flex-shrink:0;">${n}</span>
-      </label>`;
-    }).join('');
-}
+  }).questions
+});
 
-function buildNumeroMap(pregs) {
-  // Group by examen + anio so each year starts at 1
-  const groups = {};
-  pregs.forEach(p => {
-    const anio = p.anio || p.año || p.year || '';
-    const key = (p.examen || 'Sin examen') + (anio ? '_' + anio : '');
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(p);
-  });
-  // Assign 1-based number within each group sorted by num_original
-  Object.keys(groups).forEach(key => {
-    const sorted = resiarSortByOriginalExamOrder(groups[key]);
-    sorted.forEach((p, idx) => {
-      try { p._resiarOriginalGroupRank = idx + 1; } catch(_) {}
-    });
-  });
-}
 // getNPregunta: ver src/utils/questionOrder.js (resiarGetNPregunta). Se
 // mantiene este nombre corto porque se usa en decenas de templates de
 // main.js; antes había además una segunda implementación que la pisaba en
