@@ -3,6 +3,7 @@ import { esRespuestaAnulada } from './utils/examAnswers.js';
 import { configureExamNav } from './ui/examNav.js';
 import { configureRacha } from './ui/racha.js';
 import { configureChecklistEspecialidades } from './ui/checklistEspecialidades.js';
+import { configureExamBankFilter } from './ui/examBankFilter.js';
 import { renderQuestionRepeatedBanner } from './utils/questionRepeats.js';
 import {
   getCanonicalOptionEntries,
@@ -1519,137 +1520,29 @@ try { window.exportarPDF = exportarPDF; } catch (_) {}
 let _filtroExamenValue = 'todos';
 Object.defineProperty(document, '_filtroProxy', { value: true });
 
-function cargarFiltros() {
-  const ex = [...new Set(preguntas.map(p => p.examen))];
-  const exOtros = ex.filter(e => !esProvinciaBsAs(e) && !esExamenUnico(e));
-  const hayProvincia = ex.some(e => esProvinciaBsAs(e));
-  const hayEU        = ex.some(e => esExamenUnico(e));
-
-  const opciones = [{ value: 'todos', label: 'Todos los exámenes' }];
-  exOtros.forEach(e => opciones.push({ value: e, label: e }));
-  if (hayEU)       opciones.push({ value: EU_VALUE,        label: 'Examen Único' });
-  if (hayProvincia) opciones.push({ value: PROVINCIA_VALUE, label: 'Provincia de Buenos Aires' });
-
-  filtroExamen.innerHTML = opciones.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
-  const dd = document.getElementById('filtroExamenDropdown');
-  dd.innerHTML = opciones.map(o => `
-    <div class="custom-select-option${o.value === _filtroExamenValue ? ' selected' : ''}"
-         data-action="select-exam-filter"
-         data-value="${String(o.value).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}"
-         data-label="${String(o.label).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}">
-      ${o.label}
-    </div>`).join('');
-  cargarAniosMir(_filtroExamenValue === 'todos' ? null : _filtroExamenValue);
-}
-
-// ── AÑO ──
+// cargarFiltros / cargarAniosMir / selectAnioMir / toggleAnioMirSelect /
+// selectExamen / toggleCustomSelect: extraídas a ui/examBankFilter.js
+// siguiendo el patrón configure(). main.js sigue siendo dueño del estado
+// (_filtroExamenValue, _filtroAnioMirValue, preguntas) y lo inyecta acá
+// vía closure.
 let _filtroAnioMirValue = 'todos';
-
-function cargarAniosMir(bancoValue) {
-  const wrap = document.getElementById('filtroAnioMirWrap');
-  const esProv  = bancoValue === PROVINCIA_VALUE;
-  const esEU    = bancoValue === EU_VALUE;
-
-  // Ocultar si no hay banco seleccionado
-  if (!bancoValue || bancoValue === 'todos') {
-    wrap.style.display = 'none';
-    _filtroAnioMirValue = 'todos';
-    return;
-  }
-  wrap.style.display = '';
-
-  // Para provincia: años de todas las preguntas de provincia BA
-  // Para EU: años de todas las preguntas con examen === 'EU'
-  // Para cualquier otro banco exacto
-  const fuente = esProv
-    ? preguntas.filter(p => esProvinciaBsAs(p.examen))
-    : esEU
-      ? preguntas.filter(p => esExamenUnico(p.examen))
-      : preguntas.filter(p => p.examen == bancoValue);
-
-  const anios = [...new Set(
-    fuente
-      .map(p => {
-        const explicit = p.anio || p.año || p.year;
-        if (explicit) return String(explicit);
-        const match = String(p.examen || '').match(/\b(19|20)\d{2}\b/);
-        return match ? match[0] : null;
-      })
-      .filter(Boolean)
-  )].sort((a, b) => b - a);
-
-  const dd = document.getElementById('filtroAnioMirDropdown');
-  const opciones = [{ value: 'todos', label: 'Todos los años' }, ...anios.map(a => ({ value: a, label: a }))];
-  dd.innerHTML = opciones.map(o => `
-    <div class="custom-select-option${o.value === _filtroAnioMirValue ? ' selected' : ''}"
-         data-action="select-mir-year-filter"
-         data-value="${String(o.value).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}"
-         data-label="${String(o.label).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}">
-      ${o.label}
-    </div>`).join('');
-  _filtroAnioMirValue = 'todos';
-  document.getElementById('filtroAnioMirLabel').textContent = 'Todos los años';
-}
-
-function selectAnioMir(value, label) {
-  _filtroAnioMirValue = value;
-  document.getElementById('filtroAnioMirLabel').textContent = label;
-  document.getElementById('filtroAnioMirDropdown').classList.remove('open');
-  const svg = document.querySelector('#filtroAnioMirTrigger svg');
-  if (svg) svg.style.transform = '';
-  document.querySelectorAll('#filtroAnioMirDropdown .custom-select-option').forEach(el => {
-    el.classList.toggle('selected', el.textContent.trim() === label);
-  });
-}
-
-function toggleAnioMirSelect() {
-  const dd = document.getElementById('filtroAnioMirDropdown');
-  dd.classList.toggle('open');
-  const svg = document.querySelector('#filtroAnioMirTrigger svg');
-  if (svg) svg.style.transform = dd.classList.contains('open') ? 'rotate(180deg)' : '';
-}
-
-document.addEventListener('click', e => {
-  if (!e.target.closest('#filtroAnioMirSelectWrap') && !e.target.closest('#filtroAnioMirDropdown')) {
-    const dd = document.getElementById('filtroAnioMirDropdown');
-    dd?.classList.remove('open');
-    const svg = document.querySelector('#filtroAnioMirTrigger svg');
-    if (svg) svg.style.transform = '';
-  }
-});
-
-function selectExamen(value, label) {
-  _filtroExamenValue = value;
-  filtroExamen.value = value;
-  document.getElementById('filtroExamenLabel').textContent = label;
-  document.getElementById('filtroExamenDropdown').classList.remove('open');
-  const svg = document.querySelector('#filtroExamenTrigger svg');
-  if (svg) svg.style.transform = '';
-  // Trigger change event
-  filtroExamen.dispatchEvent(new Event('change'));
-  // Actualizar selected en dropdown
-  document.querySelectorAll('#filtroExamenDropdown .custom-select-option').forEach(el => {
-    el.classList.toggle('selected', el.textContent.trim() === label);
-  });
-  // Mostrar/ocultar selector de año MIR
-  cargarAniosMir(value === 'todos' ? null : value);
-}
-
-function toggleCustomSelect() {
-  const dd = document.getElementById('filtroExamenDropdown');
-  dd.classList.toggle('open');
-  const svg = document.querySelector('#filtroExamenTrigger svg');
-  if (svg) svg.style.transform = dd.classList.contains('open') ? 'rotate(180deg)' : '';
-}
-
-// Cerrar al hacer click afuera
-document.addEventListener('click', e => {
-  if (!e.target.closest('#filtroExamenWrap') && !e.target.closest('#filtroExamenDropdown')) {
-    const dd = document.getElementById('filtroExamenDropdown');
-    dd?.classList.remove('open');
-    const svg = document.querySelector('#filtroExamenTrigger svg');
-    if (svg) svg.style.transform = '';
-  }
+// `cargarFiltros` es `let` (no `const`): más abajo, `installFilterHooks()`
+// la envuelve en runtime para integrar el filtro de "exámenes mixtos"
+// (ver window.cargarFiltros ~línea 4741). Es un wrapper deliberado, no un
+// duplicado divergente (a diferencia del caso de la pasada 4).
+let {
+  cargarFiltros,
+  cargarAniosMir,
+  selectAnioMir,
+  toggleAnioMirSelect,
+  selectExamen,
+  toggleCustomSelect
+} = configureExamBankFilter({
+  getPreguntas: () => preguntas,
+  getFiltroExamenValue: () => _filtroExamenValue,
+  setFiltroExamenValue: (v) => { _filtroExamenValue = v; },
+  getFiltroAnioMirValue: () => _filtroAnioMirValue,
+  setFiltroAnioMirValue: (v) => { _filtroAnioMirValue = v; }
 });
 
 // Parchear filtroExamen.value para leer de _filtroExamenValue
