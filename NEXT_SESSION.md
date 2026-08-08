@@ -21,15 +21,12 @@ Cloudflare Workers (`resiarg`), auto-deploy en push a `main`. App vive en `resia
 5. Limpieza `main.js` pasada 2: extraída la nav de examen (`getQuestionNavClass`, `getOptimizedNavRanges`, `renderNavDotsOptimized`, `getNavRenderKey`, `syncNavDotState`, `renderNavGridInto`) a `ui/examNav.js` con patrón `configure()`. `esRespuestaAnulada` extraída (pura) a `utils/examAnswers.js`. 13 tests nuevos (`examNav.test.js`). Suite en 99 tests. `main.js` 6.188→6.107 líneas.
 6. Limpieza `main.js` pasada 3: extraídas las funciones de racha/streak (`resiarEvaluationCountsForStreak`, `resiarFindRachaAnchorIndex`, `resiarCalcularRachaCorrectas`, `actualizarRachaPill`, `renderRacha`, `boom`) a `ui/racha.js` con patrón `configure()` (deps: `getExamen`, `getRespuestas`, `getActual`, `getLastAnsweredIndex`, `evaluateQuestionAnswer`, `getCorrectas`). 8 tests nuevos (`racha.test.js`). Suite en 107 tests. `main.js` 6.107→6.038 líneas.
 7. Limpieza `main.js` pasada 4: resuelto el hotfix en vivo de orden de preguntas. Había un IIFE (`resiar-question-order-stability-script`) que pisaba en runtime `resiarParseOrderNumber`/`resiarSortByOriginalExamOrder`/`getNPregunta` con una implementación DISTINTA a la que el archivo importaba "limpiamente" de `utils/questionOrder.js` (el IIFE agrupaba por examen+año antes de ordenar; era la versión que realmente corría en producción). Se consolidó la lógica del IIFE como implementación canónica en `utils/questionOrder.js` (usa `esProvinciaBsAs`/`esExamenUnico` de `utils/examFilters.js`), con 6 tests de paridad que reimplementan la lógica legacy tal cual y comparan contra la nueva sobre un dataset sintético mixto (CABA, ENARM, Provincia BA con variantes, Examen Único). Se borró el IIFE (65 líneas) y `_numeroMap` (había quedado de solo-escritura). El patch de `resiarIsSpecificFilterActive`, que vivía en el mismo IIFE pero es un tema no relacionado, se dejó intacto en su propio bloque. Suite en 113 tests. `main.js` 6.038→5.963 líneas.
+8. Limpieza `main.js` pasada 5: extraídas `cargarChecklist`/`buildNumeroMap` a `ui/checklistEspecialidades.js` con patrón `configure()` (dep: `getUnfilteredPool`, que main.js resuelve vía `resiarBuildExamSelection`). `getNPregunta` se dejó donde estaba (ya es un delegador trivial de 3 líneas a `utils/questionOrder.js`, no valía la pena moverlo). Se borró `checklistEl` y `const _normEsp` de `main.js` (dead code tras la extracción). 9 tests nuevos (`checklistEspecialidades.test.js`, incluye casos DOM vía jsdom). Suite en 122 tests. `main.js` 5.963→5.913 líneas.
 
 ## Pendiente / próximo paso
-- Seguir buscando bloques cohesivos en `main.js` (5.963 líneas todavía).
-  Candidato: `cargarChecklist`/`buildNumeroMap`/`getNPregunta` como unidad
-  de "numeración y checklist de especialidades" — `getNPregunta` ya
-  delega a `utils/questionOrder.js`, `buildNumeroMap` sigue en `main.js`
-  y depende de poco (solo `resiarSortByOriginalExamOrder`, ya
-  importado). Antes de mover más, revisar si vale la pena vs. otros
-  bloques con más líneas.
+- Seguir buscando bloques cohesivos en `main.js` (5.913 líneas todavía).
+  No hay candidato puntual anotado; próxima sesión: escanear de nuevo
+  para encontrar el bloque más grande/cohesivo que valga la pena mover.
 - No tocar `resiarEvaluateQuestionAnswer` (corrección de examen) sin tests
   con datos reales.
 - Leaked Password Protection de Supabase: bloqueada por plan Free.
