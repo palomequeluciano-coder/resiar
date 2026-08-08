@@ -4,6 +4,7 @@ import { configureExamNav } from './ui/examNav.js';
 import { configureRacha } from './ui/racha.js';
 import { configureChecklistEspecialidades } from './ui/checklistEspecialidades.js';
 import { configureExamBankFilter } from './ui/examBankFilter.js';
+import { configureExamTimer } from './ui/examTimer.js';
 import { renderQuestionRepeatedBanner } from './utils/questionRepeats.js';
 import {
   getCanonicalOptionEntries,
@@ -2483,49 +2484,20 @@ modalFinal.addEventListener("click", e => { if (e.target === modalFinal) cerrarM
 // Modularizado en src/ui/examControls.js.
 
 // ── TIMER ──
-function resiarFormatElapsedTimer(seconds) {
-  const totalSeconds = Math.max(0, Math.floor(Number(seconds) || 0));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const secs = totalSeconds % 60;
-
-  if (hours > 0) {
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  }
-
-  return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-}
-
-function iniciarTimer(initialRemaining, initialTotal) {
-  clearInterval(timer);
-  const total = Number(initialTotal);
-  const remaining = Number(initialRemaining);
-
-  // Internamente mantenemos `tiempo` como tiempo restante para no romper:
-  // - guardado/restauración de borradores
-  // - estadísticas finales
-  // - sonidos de aviso al quedar 60/30/10 segundos
-  // Visualmente mostramos tiempo transcurrido, empezando en 00:00.
-  tiempoTotal = Number.isFinite(total) && total > 0 ? Math.floor(total) : 120 * 60;
-  tiempo = Number.isFinite(remaining) && remaining >= 0 ? Math.min(Math.floor(remaining), tiempoTotal) : tiempoTotal;
-
-  const renderTimer = () => {
-    if (!timerSpan) return;
-    const elapsed = Math.max(0, tiempoTotal - tiempo);
-    timerSpan.innerText = resiarFormatElapsedTimer(elapsed);
-  };
-
-  renderTimer();
-
-  timer = setInterval(() => {
-    tiempo--;
-    renderTimer();
-
-    if (tiempo > 0 && tiempo % 15 === 0) resiarSaveCurrentExamDraft('timer');
-    if (tiempo === 60 || tiempo === 30 || (tiempo <= 10 && tiempo > 0)) sonTimer();
-    if (tiempo <= 0) { clearInterval(timer); finalizar(); }
-  }, 1000);
-}
+// resiarFormatElapsedTimer / iniciarTimer: extraídas a ui/examTimer.js
+// siguiendo el patrón configure(). main.js sigue siendo dueño del estado
+// (tiempo, tiempoTotal, timer) y lo inyecta acá vía closure.
+const { resiarFormatElapsedTimer, iniciarTimer } = configureExamTimer({
+  getTiempo: () => tiempo,
+  setTiempo: (v) => { tiempo = v; },
+  getTiempoTotal: () => tiempoTotal,
+  setTiempoTotal: (v) => { tiempoTotal = v; },
+  getTimer: () => timer,
+  setTimer: (v) => { timer = v; },
+  saveDraft: (reason) => resiarSaveCurrentExamDraft(reason),
+  playTimerSound: () => sonTimer(),
+  onTimeUp: () => finalizar()
+});
 
 // ── INIT ──
 (function() {
