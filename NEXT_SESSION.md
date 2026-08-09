@@ -34,29 +34,36 @@ Cloudflare Workers (`resiarg`), auto-deploy en push a `main`. App vive en `resia
     - **`resiar-home-search-bindings`** (~45 líneas, línea ~5627): **ya extraída** a `ui/homeSearchBindings.js` (pasada 9) — reasignaba `resiarRenderHome`/`mostrarPantallaBienvenida`/`irAConfigurarNuevoExamen` (bindings de `main.js`, mismo patrón de wrapper-en-runtime que `cargarFiltros`). Se resolvió con un puente `setFunction(name, fn)` inyectado desde `main.js`, el mismo tipo de get/set que ya usaba `configureViewStateController` más abajo en el archivo (se reutilizó la idea, no el código). +7 tests.
     Suite: 140 → 152 tests (whatsappViewState). `main.js` 5.745→5.711 líneas.
 14. Limpieza `main.js` pasada 9: extraída `resiar-home-search-bindings` (ver punto 13). Suite: 152 → 159 tests. `main.js` 5.711→5.680 líneas.
+15. Limpieza `main.js` pasada 10: extraído el IIFE `resiar-mixed-exam-filter-script` (776 líneas) a `ui/mixedExamFilter.js` — el segundo de los dos IIFEs grandes mapeados en la pasada 8, y el más chico de los dos (el que NO depende del otro). Implementa el banco combinado (mezclar exámenes/años en una sola selección), tracking de preguntas completadas, y totales reales del banco para usuarios en trial. Sigue el patrón `configure()`, con dos matices por el tamaño:
+    - Estado mutable de `main.js` (`preguntas`, `currentUser`, `currentProfile`, `_serverAcceso`, `_resiarQuestionBankVersion`, `cargarChecklist`, `_filtroExamenValue`, `_filtroAnioMirValue`) inyectado vía closure, igual que las extracciones anteriores.
+    - `cargarFiltros` necesita getter Y setter: este módulo la envuelve en runtime (`installFilterHooks`) para recalcular los grupos combinados cada vez que se recargan los filtros — por eso sigue siendo `let` en `main.js` desde la pasada 6, justamente por este wrapper.
+    - Bonus: varias funciones internas leían `PROVINCIA_VALUE`/`EU_VALUE`/`esProvinciaBsAs`/`esExamenUnico`/`labelExamen`/`planUsesTrialQuestionCache`/`sbUpdateSummary` vía guards `typeof x !== 'undefined' ? x : fallback` (defensivo por el orden de carga en la era pre-módulos). Se simplificaron a imports directos desde sus módulos de origen (`examFilters.js`, `trialAccess.js`, `sidebar.js`), sin guard — un import de ES module falla en build time si no existe, así que la carrera que esos guards prevenían ya no puede pasar. Se eliminaron 3 imports de `storageKeys.js` que quedaron huérfanos en `main.js` (`RESIAR_MIXED_EXAM_FILTER_PREFIX`, `LEGACY_MIXED_EXAM_FILTER_KEYS`, `userScopedStorageKey` — ahora viven solo en el nuevo módulo).
+    Sigue exponiendo su API en `window` (`mixedExamFilterRefresh`/`Toggle`/`ToggleBank`/`Clear`/`Debug`, `resiarMarkCompletionAnsweredIds`, etc.) porque otras partes de la UI (incluido el home render wrapper que todavía no se extrajo) la consultan así.
+    +9 tests nuevos (`mixedExamFilter.test.js`, con timers falsos y DOM real vía jsdom). Suite: 159 → 168 tests. `main.js` 5.680→4.919 líneas (**la reducción más grande de todas las pasadas**).
 
 ## Pendiente / próximo paso
-- Quedan 2 IIFEs grandes sin tocar: **mixed-exam-filter** (~774 líneas,
-  línea ~3981) y **home render wrapper** (~726 líneas, línea ~4759,
-  depende del anterior vía `window.mixedExamFilterDebug()`). Juntos son
-  ~1500 líneas de lógica muy acoplada al estado de `main.js` (docenas de
-  referencias `typeof x !== 'undefined' ? x : ...` a `preguntas`,
-  `currentUser`, `currentProfile`, `_serverAcceso`,
-  `_resiarQuestionBankVersion`, `PROVINCIA_VALUE`, `EU_VALUE`,
-  `esProvinciaBsAs`, `esExamenUnico`, `labelExamen`,
-  `planUsesTrialQuestionCache`, y más) más el wrapper en runtime de
-  `cargarFiltros` (`installFilterHooks()`, dentro del primero). Esto
-  necesita una sesión dedicada con tiempo para mapear cada dependencia
-  antes de tocar nada — no es una pasada corta como las anteriores.
+- Queda **1 IIFE grande sin tocar**: el **home render wrapper**
+  (`resiarHomeConfiguratorScript`, ~726 líneas, buscar por ese nombre
+  en `main.js`). Depende del filtro de exámenes mixtos ya extraído vía
+  `window.mixedExamFilterDebug()` (llamada global, sigue funcionando
+  igual). Mismo nivel de acoplamiento al estado de `main.js` que el que
+  acabamos de extraer (docenas de referencias `typeof x !== 'undefined'
+  ? x : ...` a `preguntas`, `currentUser`, `currentProfile`,
+  `_serverAcceso`, `EU_VALUE`, `PROVINCIA_VALUE`, `esProvinciaBsAs`,
+  `esExamenUnico`, `labelExamen`, `planUsesTrialQuestionCache`,
+  `espLabel`, `temaRaw`, `normalizeSearchText`, y más) — el patrón para
+  extraerlo ya está probado 3 veces (`examBankFilter.js` con
+  `cargarFiltros`, `homeSearchBindings.js` con `resiarRenderHome`/etc.,
+  y ahora `mixedExamFilter.js`): imports directos para lo que sea puro/
+  estático, getter(+setter si se reasigna) para lo que main.js muta.
+  No hay wrapper-en-runtime conocido dentro de este (a diferencia de
+  los dos anteriores), pero conviene grepear `= function` y
+  reasignaciones de bindings de `main.js` antes de asumirlo.
 - Ojo con posibles wrappers en runtime antes de convertir una
   destructuración a `const`: si algo reasigna la función más abajo en
   el archivo, el build de Vite/Rolldown falla explícitamente con el
   error de reasignación — no es un fallo silencioso, así que
-  `npm run build` lo va a marcar solo. Cuando el wrapper reasigna un
-  binding de `main.js` desde un módulo separado, el patrón que ya
-  funcionó dos veces (`examBankFilter.js` con `cargarFiltros`,
-  `homeSearchBindings.js` con `resiarRenderHome`/etc.) es inyectar un
-  getter/setter — no intentar acceso directo al scope de `main.js`.
+  `npm run build` lo va a marcar solo.
 - No tocar `resiarEvaluateQuestionAnswer` (corrección de examen) sin tests
   con datos reales.
 - Leaked Password Protection de Supabase: bloqueada por plan Free.
