@@ -262,8 +262,6 @@ import {
 import {
   getQuestionImagesBaseUrl,
   normalizeQuestionImagePath,
-  getQuestionImagePaths,
-  getQuestionImageLabel,
   resiarGetStoredQuestionImagesCacheVersion,
   resiarSetQuestionImagesCacheVersion
 } from './utils/questionImages.js';
@@ -928,14 +926,6 @@ async function resiarHydrateDraftThroughSecureSession(draft) {
 
 function resiarNormalizeAnswerValue(value) {
   return canonicalNormalizeAnswerValue(value);
-}
-
-function resiarVisibleQuestionType(tipo) {
-  const raw = String(tipo || '').trim();
-  if (!raw) return null;
-  const normalized = raw.toLowerCase().replace(/[\s-]+/g, '_');
-  if (normalized === 'medicina' || normalized === 'opcion_multiple' || normalized === 'opción_multiple' || normalized === 'multiple_choice') return null;
-  return raw;
 }
 
 function resiarHasAnswerValue(value) {
@@ -1915,11 +1905,6 @@ function getQuestionImageUrlFromPath(path) {
   const baseUrl = getQuestionImagesBaseUrl();
   if (!baseUrl) return '';
   return resiarAppendQuestionImageCacheParam(`${baseUrl}/storage/v1/object/public/question-images/${clean}`);
-}
-
-function getQuestionImageUrl(p) {
-  const firstPath = getQuestionImagePaths(p)[0];
-  return getQuestionImageUrlFromPath(firstPath);
 }
 
 function renderQuestionImage(p) {

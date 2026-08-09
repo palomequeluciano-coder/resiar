@@ -142,11 +142,6 @@ export function getQuestionImageUrlFromPath(path, options = {}) {
   return resiarAppendQuestionImageCacheParam(`${baseUrl}/storage/v1/object/public/question-images/${clean}`, options);
 }
 
-export function getQuestionImageUrl(question, options = {}) {
-  const firstPath = getQuestionImagePaths(question)[0];
-  return getQuestionImageUrlFromPath(firstPath, options);
-}
-
 export function getQuestionImageLabel(path, index, total) {
   const clean = String(path || '').split('/').pop() || '';
   const withoutExt = clean.replace(/\.[^.]+$/, '');
