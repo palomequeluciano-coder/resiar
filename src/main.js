@@ -5,6 +5,7 @@ import { configureRacha } from './ui/racha.js';
 import { configureChecklistEspecialidades } from './ui/checklistEspecialidades.js';
 import { configureExamBankFilter } from './ui/examBankFilter.js';
 import { configureExamTimer } from './ui/examTimer.js';
+import './ui/whatsappViewState.js';
 import { renderQuestionRepeatedBanner } from './utils/questionRepeats.js';
 import {
   getCanonicalOptionEntries,
@@ -5486,41 +5487,6 @@ installReviews({
 
 
 /* ===== resiar-view-state-compat-bridge ===== */
-(function(){
-  function q(id){ return document.getElementById(id); }
-  if (typeof window.resiarSetWhatsAppVisible !== 'function') {
-    window.resiarSetWhatsAppVisible = function(visible){
-      try {
-        var wa = q('waFloat');
-        if (!wa) return;
-        wa.style.display = visible ? 'flex' : 'none';
-        wa.style.visibility = visible ? 'visible' : 'hidden';
-        wa.style.pointerEvents = visible ? 'auto' : 'none';
-        wa.setAttribute('aria-hidden', visible ? 'false' : 'true');
-        wa.tabIndex = visible ? 0 : -1;
-      } catch(_) {}
-    };
-  }
-  window.resiarMarkViewState = function(kind){
-    try {
-      if (typeof window.resiarSetViewState === 'function') {
-        window.resiarSetViewState(kind);
-        return;
-      }
-      var state = String(kind || '').toLowerCase().replace(/_/g,'-');
-      if (state === 'home' || state === 'blocked') state = 'config';
-      if (state === 'ended' || state === 'final') state = 'exam-ended';
-      if (!state) state = 'config';
-      document.body.dataset.resiarView = state;
-      document.body.classList.toggle('resiar-public-landing', state === 'landing');
-      if (state !== 'landing' && typeof window.resiarSetWhatsAppVisible === 'function') window.resiarSetWhatsAppVisible(false);
-      else if (state === 'landing' && typeof window.resiarSyncWhatsAppFloat === 'function') window.resiarSyncWhatsAppFloat();
-    } catch(_) {}
-  };
-  window.resiarHideStreakToast = function(){
-    try { q('streakToast')?.classList.remove('show'); } catch(_) {}
-  };
-})();
 
 
 /* ===== resiar-public-carousel-script ===== */
