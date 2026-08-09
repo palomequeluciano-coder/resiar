@@ -6,6 +6,7 @@ import { configureChecklistEspecialidades } from './ui/checklistEspecialidades.j
 import { configureExamBankFilter } from './ui/examBankFilter.js';
 import { configureExamTimer } from './ui/examTimer.js';
 import './ui/whatsappViewState.js';
+import { configureHomeSearchBindings } from './ui/homeSearchBindings.js';
 import { renderQuestionRepeatedBanner } from './utils/questionRepeats.js';
 import {
   getCanonicalOptionEntries,
@@ -5590,52 +5591,20 @@ installResiarSoundSystemExtension({
 
 
 /* ===== resiar-home-search-bindings ===== */
-(function(){
-  'use strict';
-  if (window.__resiarHomeSearchBindingsInstalled) return;
-  window.__resiarHomeSearchBindingsInstalled = true;
-
-  function q(id){ return document.getElementById(id); }
-  function installSearchHandlers(){
-    const esp = q('homeEspSearch');
-    if (esp && !esp.__resiarHomeSearchHandler) {
-      esp.__resiarHomeSearchHandler = true;
-      esp.addEventListener('input', function(){
-        if (typeof window.resiarHomeRefreshSpecialties === 'function') window.resiarHomeRefreshSpecialties();
-      });
-    }
-    const topic = q('homeTemaInput');
-    if (topic && !topic.__resiarHomeSearchHandler) {
-      topic.__resiarHomeSearchHandler = true;
-      topic.addEventListener('input', function(){
-        if (typeof window.resiarHomeSetTopic === 'function') window.resiarHomeSetTopic(topic.value);
-      });
-    }
+/* ===== resiar-home-search-bindings ===== */
+// Extraído a ui/homeSearchBindings.js. main.js sigue siendo dueño de los
+// bindings reasignables (resiarRenderHome, mostrarPantallaBienvenida,
+// irAConfigurarNuevoExamen) y los sincroniza acá vía setFunction.
+configureHomeSearchBindings({
+  setFunction: (name, fn) => {
+    window[name] = fn;
+    try {
+      if (name === 'resiarRenderHome') resiarRenderHome = fn;
+      else if (name === 'mostrarPantallaBienvenida') mostrarPantallaBienvenida = fn;
+      else if (name === 'irAConfigurarNuevoExamen') irAConfigurarNuevoExamen = fn;
+    } catch (_) {}
   }
-
-  function wrapAfterRender(name){
-    const fn = window[name];
-    if (typeof fn !== 'function' || fn.__resiarHomeSearchWrapped) return;
-    const wrapped = function(){
-      const out = fn.apply(this, arguments);
-      Promise.resolve(out).finally(function(){ requestAnimationFrame(installSearchHandlers); });
-      return out;
-    };
-    wrapped.__resiarHomeSearchWrapped = true;
-    window[name] = wrapped;
-    try { if (name === 'resiarRenderHome') resiarRenderHome = wrapped; } catch(_) {}
-    try { if (name === 'mostrarPantallaBienvenida') mostrarPantallaBienvenida = wrapped; } catch(_) {}
-    try { if (name === 'irAConfigurarNuevoExamen') irAConfigurarNuevoExamen = wrapped; } catch(_) {}
-  }
-
-  function install(){
-    installSearchHandlers();
-    ['resiarRenderHome','mostrarPantallaBienvenida','irAConfigurarNuevoExamen'].forEach(wrapAfterRender);
-  }
-
-  // v69: instalación directa; los wrappers reinstalan handlers cuando el home se renderiza de nuevo.
-  install();
-})();
+});
 
 
 /* ===== resiar-view-state-controller ===== */
