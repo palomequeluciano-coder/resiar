@@ -260,10 +260,8 @@ import {
 } from './services/googleAuth.js';
 
 import {
-  getQuestionImagesBaseUrl,
-  normalizeQuestionImagePath,
-  resiarGetStoredQuestionImagesCacheVersion,
-  resiarSetQuestionImagesCacheVersion
+  getQuestionImageUrlFromPath as resiarGetQuestionImageUrlFromPathBase,
+  resiarRefreshQuestionImagesCache
 } from './utils/questionImages.js';
 import { renderQuestionImage as renderQuestionImageBase, renderQuestionTextWithImageRef } from './ui/questionImages.js';
 import { configureMarkedQuestions } from './services/markedQuestions.js';
@@ -1878,33 +1876,17 @@ const {
 
 
 
-function resiarRefreshQuestionImagesCache(version) {
-  return resiarSetQuestionImagesCacheVersion(version || `${Date.now()}`);
-}
-
 try { window.resiarRefreshQuestionImagesCache = resiarRefreshQuestionImagesCache; } catch (_) {}
 
-function resiarGetQuestionImagesCacheVersion() {
-  const bankVersion = String(_resiarQuestionBankVersion || window.__resiarQuestionBankVersion || RESIAR_QB_VERSION_FALLBACK || '').trim();
-  const imageVersion = resiarGetStoredQuestionImagesCacheVersion();
-  if (bankVersion && imageVersion) return `${bankVersion}-${imageVersion}`;
-  return bankVersion || imageVersion || 'v1';
-}
-
-function resiarAppendQuestionImageCacheParam(url) {
-  const value = resiarGetQuestionImagesCacheVersion();
-  if (!url || !value) return url;
-  const separator = url.includes('?') ? '&' : '?';
-  return `${url}${separator}rv=${encodeURIComponent(value)}`;
-}
-
+// getQuestionImageUrlFromPath: wrapper delgado sobre la versión canónica y
+// testeada de utils/questionImages.js (unificado; antes había una
+// reimplementación completa acá con la misma lógica). Solo agrega el
+// estado propio de main.js (versión del banco de preguntas) como opciones.
 function getQuestionImageUrlFromPath(path) {
-  const clean = normalizeQuestionImagePath(path);
-  if (!clean) return '';
-  if (/^https?:\/\//i.test(clean)) return resiarAppendQuestionImageCacheParam(clean);
-  const baseUrl = getQuestionImagesBaseUrl();
-  if (!baseUrl) return '';
-  return resiarAppendQuestionImageCacheParam(`${baseUrl}/storage/v1/object/public/question-images/${clean}`);
+  return resiarGetQuestionImageUrlFromPathBase(path, {
+    questionBankVersion: _resiarQuestionBankVersion,
+    fallbackVersion: RESIAR_QB_VERSION_FALLBACK
+  });
 }
 
 function renderQuestionImage(p) {
