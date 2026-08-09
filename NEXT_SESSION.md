@@ -26,15 +26,27 @@ Cloudflare Workers (`resiarg`), auto-deploy en push a `main`. App vive en `resia
 10. Limpieza `main.js` pasada 7: extraídas `resiarFormatElapsedTimer`/`iniciarTimer` (timer principal de examen) a `ui/examTimer.js` con patrón `configure()` (deps: `getTiempo`/`setTiempo`, `getTiempoTotal`/`setTiempoTotal`, `getTimer`/`setTimer` — el id del `setInterval`, reusado en varios `clearInterval(timer)` de `main.js` —, `saveDraft`, `playTimerSound`, `onTimeUp`). 10 tests nuevos (`examTimer.test.js`, con `vi.useFakeTimers()`: formato puro, tiempo transcurrido en pantalla, guardado de borrador cada 15s, sonido en 60/30/10..1, `onTimeUp` exacto al llegar a 0, reinicio sin timers duplicados). Suite en 140 tests. `main.js` 5.806→5.778 líneas.
 11. Barrida de código muerto (a pedido explícito, no parte de la limpieza incremental de `main.js`): borrados 5 archivos completos sin ninguna referencia en el repo — `state/appState.js`, `ui/welcomeView.js` (scaffold viejo de la migración a Vite), `ui/labValues.js` (607 líneas, superado por `ui/quickReferenceData.js`), `ui/examQuestionRenderer.js` (257 líneas, implementación de renderizado de preguntas nunca cableada), `config/supabase.js` (cliente Supabase alternativo vía npm, superado por `/supabase-global.js` que inicializa `window.sb` como script global). Se quitó la dependencia npm `@supabase/supabase-js` de `package.json` (había quedado huérfana, solo la usaba el archivo borrado) y se regeneró `package-lock.json`. Dentro de `main.js`: borradas `resiarVisibleQuestionType()` y `getQuestionImageUrl()` local (ninguna se llamaba nunca), más los imports huérfanos `getQuestionImagePaths`/`getQuestionImageLabel` que solo usaba esa función ya borrada. En `utils/questionImages.js`: borrado el export `getQuestionImageUrl` (nunca importado por nadie). Suite se mantuvo en 140 tests (sin tests nuevos, solo remoción). `main.js` 5.778→5.763 líneas. -1.031 líneas netas en el repo.
 12. Unificación de lógica duplicada (a pedido explícito, siguiendo directo de la pasada 11): `main.js` tenía su propia reimplementación completa de `resiarGetQuestionImagesCacheVersion`/`resiarAppendQuestionImageCacheParam`/`getQuestionImageUrlFromPath`/`resiarRefreshQuestionImagesCache`, casi idéntica a las versiones exportadas y testeadas de `utils/questionImages.js` (que ya usa `ui/explanation.js`), solo diferían en que la versión del banco de preguntas se leía de una variable de módulo (`_resiarQuestionBankVersion`) en vez de recibirse por parámetro. Ahora `main.js` importa directo `resiarRefreshQuestionImagesCache` (sin wrapper, es idéntica) y `getQuestionImageUrlFromPath` queda como un wrapper de una sola función que le pasa `{questionBankVersion: _resiarQuestionBankVersion, fallbackVersion: RESIAR_QB_VERSION_FALLBACK}` como opciones a la versión de `utils/` — mismo orden de prioridad que antes (variable de módulo → `window.__resiarQuestionBankVersion` → constante de fallback), comportamiento idéntico verificado contra `questionImages.test.js`. Se eliminaron las reimplementaciones ya sin uso y los 4 imports huérfanos que solo ellas consumían. Suite en 140 tests (sin nuevos, la cobertura ya existía en `questionImages.test.js`). `main.js` 5.763→5.745 líneas.
+13. Limpieza `main.js` pasada 8: mapeé los IIFEs sueltos que quedan al final del archivo (después de la última sección con comentario `// ── ... ──`, línea ~3927 en adelante) — son 5, tamaños muy dispares:
+    - **`resiar-mixed-exam-filter-script`** (~774 líneas, línea ~3981): banco combinado / filtro de exámenes mixtos. Fuertemente acoplado al estado de `main.js` (preguntas, currentUser, currentProfile, _serverAcceso, _resiarQuestionBankVersion, PROVINCIA_VALUE, EU_VALUE, esProvinciaBsAs, esExamenUnico, labelExamen, planUsesTrialQuestionCache), todo vía `typeof x !== 'undefined' ? x : ...` defensivo. Es el que contiene `installFilterHooks()` (el wrapper de `cargarFiltros` que forzó dejarla como `let` en la pasada 6). Candidato grande para una sesión dedicada — no intentar en una pasada corta.
+    - **home render wrapper** (~726 líneas, línea ~4759): envuelve el render de la home. Sin explorar en detalle todavía.
+    - **`resiar-whatsapp-viewstate-helpers`** (~34 líneas, línea ~5489): **ya extraída** a `ui/whatsappViewState.js` en esta pasada — cero dependencias del estado de `main.js` (solo document/window), se movió tal cual como módulo de efecto (`import './ui/whatsappViewState.js'`, sin bindings). +12 tests (`whatsappViewState.test.js`, DOM vía jsdom).
+    - **override de `resiarIsSpecificFilterActive`** (~11 líneas, línea ~5612): ya marcado como "no reabrir" en la pasada 4 — dejar así.
+    - **home search bindings** (~45 líneas, línea ~5627): reasigna `resiarRenderHome`/`mostrarPantallaBienvenida`/`irAConfigurarNuevoExamen` (bindings de `main.js`, mismo patrón de wrapper-en-runtime que `cargarFiltros`) — necesitaría el mismo tratamiento de "dejar como `let` + comentario" si se extrae. Sin explorar en detalle todavía.
+    Suite: 140 → 152 tests. `main.js` 5.745→5.711 líneas.
 
 ## Pendiente / próximo paso
-- Seguir buscando bloques cohesivos en `main.js` (5.745 líneas todavía).
-  No hay candidato puntual anotado; próxima sesión: escanear de nuevo
-  para encontrar el bloque más grande/cohesivo que valga la pena mover.
-  Ojo con posibles wrappers en runtime (`installFilterHooks` y
-  similares) antes de convertir una destructuración a `const`: si algo
-  reasigna la función más abajo en el archivo, el build de Vite/Rolldown
-  falla explícitamente con el error de reasignación — no es un fallo
+- Los 3 IIFEs grandes que quedan sin tocar (mixed-exam-filter ~774 líneas,
+  home render wrapper ~726 líneas, home search bindings ~45 líneas) son
+  el próximo terreno obvio para seguir bajando `main.js` — ver el mapa
+  completo en el punto 13 de arriba antes de arrancar. El de
+  mixed-exam-filter en particular es grande y con muchas dependencias
+  del estado de `main.js`: conviene una sesión dedicada, no una pasada
+  corta.
+- Ojo con posibles wrappers en runtime (`installFilterHooks`,
+  `wrapAfterRender` en home search bindings, y similares) antes de
+  convertir una destructuración a `const`: si algo reasigna la función
+  más abajo en el archivo, el build de Vite/Rolldown falla
+  explícitamente con el error de reasignación — no es un fallo
   silencioso, así que `npm run build` lo va a marcar solo.
 - No tocar `resiarEvaluateQuestionAnswer` (corrección de examen) sin tests
   con datos reales.
