@@ -39,31 +39,34 @@ Cloudflare Workers (`resiarg`), auto-deploy en push a `main`. App vive en `resia
     - `cargarFiltros` necesita getter Y setter: este módulo la envuelve en runtime (`installFilterHooks`) para recalcular los grupos combinados cada vez que se recargan los filtros — por eso sigue siendo `let` en `main.js` desde la pasada 6, justamente por este wrapper.
     - Bonus: varias funciones internas leían `PROVINCIA_VALUE`/`EU_VALUE`/`esProvinciaBsAs`/`esExamenUnico`/`labelExamen`/`planUsesTrialQuestionCache`/`sbUpdateSummary` vía guards `typeof x !== 'undefined' ? x : fallback` (defensivo por el orden de carga en la era pre-módulos). Se simplificaron a imports directos desde sus módulos de origen (`examFilters.js`, `trialAccess.js`, `sidebar.js`), sin guard — un import de ES module falla en build time si no existe, así que la carrera que esos guards prevenían ya no puede pasar. Se eliminaron 3 imports de `storageKeys.js` que quedaron huérfanos en `main.js` (`RESIAR_MIXED_EXAM_FILTER_PREFIX`, `LEGACY_MIXED_EXAM_FILTER_KEYS`, `userScopedStorageKey` — ahora viven solo en el nuevo módulo).
     Sigue exponiendo su API en `window` (`mixedExamFilterRefresh`/`Toggle`/`ToggleBank`/`Clear`/`Debug`, `resiarMarkCompletionAnsweredIds`, etc.) porque otras partes de la UI (incluido el home render wrapper que todavía no se extrajo) la consultan así.
-    +9 tests nuevos (`mixedExamFilter.test.js`, con timers falsos y DOM real vía jsdom). Suite: 159 → 168 tests. `main.js` 5.680→4.919 líneas (**la reducción más grande de todas las pasadas**).
+    +9 tests nuevos (`mixedExamFilter.test.js`, con timers falsos y DOM real vía jsdom). Suite: 159 → 168 tests. `main.js` 5.680→4.919 líneas (**la reducción más grande de todas las pasadas hasta ese punto**).
+16. Limpieza `main.js` pasada 11: extraído el IIFE `resiarHomeConfiguratorScript` (728 líneas) a `ui/homeConfigurator.js` — el segundo y último de los dos IIFEs grandes mapeados en la pasada 8. Arma el panel principal de la home (banco/año, especialidades, tema, modos especiales), contadores y resúmenes en vivo. Mismo patrón `configure()`, con dos matices nuevos respecto a las extracciones anteriores:
+    - `mostrarPantallaBienvenida`: este módulo define su PROPIA versión (usa el home moderno en vez de la pantalla legacy) y reemplaza la función declarada en `main.js` — necesita un `setMostrarPantallaBienvenida` setter, no un getter.
+    - `resiarRenderHome`/`irAConfigurarNuevoExamen`: a diferencia de lo que se asumió en la pasada 9, estas NUNCA existieron como bindings propios de `main.js` — vivían únicamente dentro de este IIFE como declaraciones locales, expuestas solo vía `window.resiarRenderHome`/`window.irAConfigurarNuevoExamen`. No hizo falta inyectar nada para ellas: siguen definidas en el nuevo módulo y expuestas en `window` igual que antes (`homeSearchBindings.js` ya las consumía así, no por scope de `main.js` — el `try/catch` alrededor de esa reasignación en `homeSearchBindings.js` silenciosamente no hacía nada para esos dos nombres, y eso está bien, es equivalente al comportamiento original).
+    - Se encontró y preservó (sin "arreglar" de paso) una referencia ya muerta en el código original: `resiarSyncViewState` se chequea como identificador bare (`typeof resiarSyncViewState === 'function'`) pero nunca estuvo declarada así en ningún lado — ni en `main.js` ni en `window`. El `typeof` la vuelve inofensiva (siempre `'undefined'`), así que quedó igual.
+    - Se eliminaron de `main.js` los 3 imports que quedaron huérfanos tras la extracción: `questionMatchesAnyTopic`/`topicMatchesFilter` (de `services/examSelection.js`) y `planUsesTrialQuestionCache` (de `ui/trialAccess.js`).
+    +9 tests nuevos (`homeConfigurator.test.js`, DOM real vía jsdom). Suite: 168 → 177 tests. `main.js` 4.919→4.216 líneas.
+
+**Con esta pasada quedan resueltos los dos IIFEs grandes que se habían mapeado en la pasada 8.** `main.js` bajó de 6.038 líneas (antes de la pasada 4) a 4.216 — una reducción de casi el 30% desde que arrancó esta limpieza incremental, sin romper ningún test ni cambiar comportamiento observable.
 
 ## Pendiente / próximo paso
-- Queda **1 IIFE grande sin tocar**: el **home render wrapper**
-  (`resiarHomeConfiguratorScript`, ~726 líneas, buscar por ese nombre
-  en `main.js`). Depende del filtro de exámenes mixtos ya extraído vía
-  `window.mixedExamFilterDebug()` (llamada global, sigue funcionando
-  igual). Mismo nivel de acoplamiento al estado de `main.js` que el que
-  acabamos de extraer (docenas de referencias `typeof x !== 'undefined'
-  ? x : ...` a `preguntas`, `currentUser`, `currentProfile`,
-  `_serverAcceso`, `EU_VALUE`, `PROVINCIA_VALUE`, `esProvinciaBsAs`,
-  `esExamenUnico`, `labelExamen`, `planUsesTrialQuestionCache`,
-  `espLabel`, `temaRaw`, `normalizeSearchText`, y más) — el patrón para
-  extraerlo ya está probado 3 veces (`examBankFilter.js` con
-  `cargarFiltros`, `homeSearchBindings.js` con `resiarRenderHome`/etc.,
-  y ahora `mixedExamFilter.js`): imports directos para lo que sea puro/
-  estático, getter(+setter si se reasigna) para lo que main.js muta.
-  No hay wrapper-en-runtime conocido dentro de este (a diferencia de
-  los dos anteriores), pero conviene grepear `= function` y
-  reasignaciones de bindings de `main.js` antes de asumirlo.
+- No queda ningún IIFE grande mapeado pendiente. Si se quiere seguir
+  bajando `main.js` (4.216 líneas), el próximo paso sería escanear de
+  nuevo el archivo para encontrar el siguiente bloque cohesivo — ya no
+  hay nada obvio anotado, así que conviene repetir el proceso de
+  pasadas anteriores: `awk`/`grep` para funciones top-level grandes,
+  buscar más IIFEs sueltos (`(function(){`) fuera de las secciones con
+  comentario `// ── ... ──`, y revisar si valen la pena.
 - Ojo con posibles wrappers en runtime antes de convertir una
   destructuración a `const`: si algo reasigna la función más abajo en
   el archivo, el build de Vite/Rolldown falla explícitamente con el
   error de reasignación — no es un fallo silencioso, así que
-  `npm run build` lo va a marcar solo.
+  `npm run build` lo va a marcar solo. Y ojo también con el caso
+  inverso descubierto en esta pasada: un binding que el código actúa
+  como si existiera en `main.js` (con `try/catch` alrededor) pero en
+  realidad solo vive en `window`, expuesto por el módulo que se está
+  extrayendo — ahí no hace falta getter/setter, alcanza con seguir
+  usando `window[name]`.
 - No tocar `resiarEvaluateQuestionAnswer` (corrección de examen) sin tests
   con datos reales.
 - Leaked Password Protection de Supabase: bloqueada por plan Free.
