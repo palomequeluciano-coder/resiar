@@ -49,26 +49,32 @@ Cloudflare Workers (`resiarg`), auto-deploy en push a `main`. App vive en `resia
 
 **Con esta pasada quedan resueltos los dos IIFEs grandes que se habían mapeado en la pasada 8.** `main.js` bajó de 6.038 líneas (antes de la pasada 4) a 4.216 — una reducción de casi el 30% desde que arrancó esta limpieza incremental, sin romper ningún test ni cambiar comportamiento observable.
 
+17. **Tests de `resiarEvaluateQuestionAnswer`** (a pedido explícito — era el único riesgo activo conocido, marcado "no tocar sin tests" desde la pasada 4): se extrajo la función de corrección de examen, junto con `resiarNormalizeAnswerResult`/`resiarQuestionHasKnownCorrectAnswer`, a `utils/answerEvaluation.js` como funciones **puras** — reciben `(question, rawAnswer, rawResult, index)` como parámetros explícitos en vez de leer `examen[i]`/`respuestas[i]`/`resiarAnswerResults[i]` del estado de `main.js`. `main.js` quedó con un wrapper de 6 líneas que arma esos parámetros desde su propio estado y delega. +25 tests nuevos (`answerEvaluation.test.js`), cubriendo entre otros el caso exacto que describe el comentario del código original: una anulación local tiene prioridad sobre un resultado guardado viejo que diga lo contrario (el admin corrige/anula después de que el usuario ya tenía un resultado guardado). Suite: 177 → 202 tests. `main.js` 4.216→4.145 líneas.
+
 ## Pendiente / próximo paso
-- No queda ningún IIFE grande mapeado pendiente. Si se quiere seguir
-  bajando `main.js` (4.216 líneas), el próximo paso sería escanear de
-  nuevo el archivo para encontrar el siguiente bloque cohesivo — ya no
-  hay nada obvio anotado, así que conviene repetir el proceso de
-  pasadas anteriores: `awk`/`grep` para funciones top-level grandes,
-  buscar más IIFEs sueltos (`(function(){`) fuera de las secciones con
-  comentario `// ── ... ──`, y revisar si valen la pena.
+- **Ya no hay ningún riesgo conocido sin cobertura marcado como "no tocar".** La corrección de examen (`resiarEvaluateQuestionAnswer`) tiene 25 tests con datos reales desde la pasada 12.
+- Seguir buscando bloques cohesivos en `main.js` (4.145 líneas todavía)
+  si se quiere seguir bajando el tamaño — escanear de nuevo el archivo,
+  ya no hay nada obvio anotado (`awk`/`grep` para funciones top-level
+  grandes, buscar más IIFEs sueltos fuera de las secciones con
+  comentario `// ── ... ──`). Lo que queda de tamaño considerable es
+  lógica de negocio real del flujo de examen (navegación, guardado de
+  borrador, edición admin en vivo) entrelazada con el estado de
+  `main.js` de forma inherente al problema — no wrappers de UI
+  genéricos como los que se extrajeron en las pasadas 4-11. El
+  perfil de riesgo/beneficio de seguir extrayendo ahí es distinto:
+  menos líneas por pasada, más cerca de la lógica de puntaje/examen en
+  vivo. Evaluar caso por caso si vale la pena antes de lanzarse.
 - Ojo con posibles wrappers en runtime antes de convertir una
   destructuración a `const`: si algo reasigna la función más abajo en
   el archivo, el build de Vite/Rolldown falla explícitamente con el
   error de reasignación — no es un fallo silencioso, así que
   `npm run build` lo va a marcar solo. Y ojo también con el caso
-  inverso descubierto en esta pasada: un binding que el código actúa
+  inverso descubierto en la pasada 11: un binding que el código actúa
   como si existiera en `main.js` (con `try/catch` alrededor) pero en
   realidad solo vive en `window`, expuesto por el módulo que se está
   extrayendo — ahí no hace falta getter/setter, alcanza con seguir
   usando `window[name]`.
-- No tocar `resiarEvaluateQuestionAnswer` (corrección de examen) sin tests
-  con datos reales.
 - Leaked Password Protection de Supabase: bloqueada por plan Free.
 
 ## Revisado y decidido NO tocar (no volver a levantar como pendiente)
