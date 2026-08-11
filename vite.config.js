@@ -35,5 +35,11 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: false,
+    coverage: {
+      provider: "v8",
+      all: true,
+      include: ["src/**/*.js"],
+      exclude: ["src/__tests__/**"],
+    },
   },
 });
