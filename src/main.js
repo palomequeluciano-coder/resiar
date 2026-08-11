@@ -817,31 +817,21 @@ try {
 } catch (_) {}
 
 
+import {
+  resiarNormalizeAnswerResult,
+  resiarEvaluateQuestionAnswer as resiarEvaluateQuestionAnswerPure
+} from './utils/answerEvaluation.js';
+
 /* ══════════════════════════════
    RESULTADOS DE RESPUESTAS EN VIVO
    - Mantiene los contadores superiores derivados de respuestas reales.
    - Necesario desde v69: las respuestas correctas pueden venir del backend
      recién al responder y no siempre existen en el catálogo local.
+   - resiarNormalizeAnswerResult / resiarQuestionHasKnownCorrectAnswer /
+     resiarEvaluateQuestionAnswer viven en utils/answerEvaluation.js como
+     funciones puras (testeadas con datos reales); acá solo queda el wrapper
+     que las conecta con el estado del examen en curso.
 ══════════════════════════════ */
-function resiarNormalizeAnswerResult(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const out = {};
-
-  if ('isCorrect' in value) out.isCorrect = value.isCorrect === true;
-  else if ('is_correct' in value) out.isCorrect = value.is_correct === true;
-
-  if ('isAnnulled' in value) out.isAnnulled = value.isAnnulled === true;
-  else if ('is_annulled' in value) out.isAnnulled = value.is_annulled === true;
-  else if ('anulada' in value) out.isAnnulled = value.anulada === true;
-
-  const correctAnswer = value.correctAnswer ?? value.correct_answer ?? value.respuesta ?? null;
-  if (correctAnswer != null) out.correctAnswer = String(correctAnswer).trim().toLowerCase();
-
-  const selectedAnswer = value.selectedAnswer ?? value.selected_answer ?? value.selected ?? null;
-  if (selectedAnswer != null) out.selectedAnswer = String(selectedAnswer).trim().toLowerCase();
-
-  return Object.keys(out).length ? out : null;
-}
 
 function resiarNormalizeAnswerResultsForExam(values) {
   return Array.from({ length: examen.length }, (_, index) => {
@@ -929,73 +919,12 @@ function resiarHasAnswerValue(value) {
   return canonicalHasAnswerValue(value);
 }
 
-function resiarQuestionHasKnownCorrectAnswer(question) {
-  if (!question) return false;
-  if (question._resiarAnswerHidden === true) return false;
-  if (question?.anulada === true) return false;
-  return resiarHasAnswerValue(question.respuesta);
-}
-
 function resiarEvaluateQuestionAnswer(index) {
   const i = Number(index);
   const question = Array.isArray(examen) ? examen[i] : null;
   const rawAnswer = Array.isArray(respuestas) ? respuestas[i] : null;
-  const selectedAnswer = resiarNormalizeAnswerValue(rawAnswer);
-  const answered = resiarHasAnswerValue(rawAnswer);
-  const result = resiarNormalizeAnswerResult(Array.isArray(resiarAnswerResults) ? resiarAnswerResults[i] : null);
-  const hasLiveCorrect = resiarQuestionHasKnownCorrectAnswer(question);
-
-  // Si el admin corrigió la pregunta y ya hay respuesta oficial cargada,
-  // esa pregunta local pasa a ser la fuente canónica. Esto evita que una
-  // corrección vieja guardada como anulada/pendiente deje stats y navegación
-  // leyendo estados distintos.
-  const isAnnulled = hasLiveCorrect
-    ? question?.anulada === true
-    : !!(esRespuestaAnulada(question) || result?.isAnnulled === true);
-
-  const correctAnswer = hasLiveCorrect
-    ? resiarNormalizeAnswerValue(question?.respuesta)
-    : (result?.correctAnswer ? resiarNormalizeAnswerValue(result.correctAnswer) : '');
-
-  let status = '';
-  let isCorrect = false;
-  let isIncorrect = false;
-  let evaluable = false;
-
-  if (!answered) {
-    status = '';
-  } else if (isAnnulled) {
-    status = 'anulada';
-  } else if (correctAnswer) {
-    evaluable = true;
-    isCorrect = selectedAnswer === correctAnswer;
-    isIncorrect = !isCorrect;
-    status = isCorrect ? 'ok' : 'no';
-  } else if (result && typeof result.isCorrect === 'boolean') {
-    evaluable = true;
-    isCorrect = result.isCorrect === true;
-    isIncorrect = !isCorrect;
-    status = isCorrect ? 'ok' : 'no';
-  } else {
-    // Respondida pero sin corrección confiable todavía: no debe sumar como
-    // correcta ni incorrecta hasta que haya respuesta/anulación verificable.
-    status = 'pendiente';
-  }
-
-  return {
-    index: i,
-    question,
-    rawAnswer,
-    selectedAnswer,
-    correctAnswer,
-    result,
-    answered,
-    evaluable,
-    isAnnulled,
-    isCorrect,
-    isIncorrect,
-    status
-  };
+  const rawResult = Array.isArray(resiarAnswerResults) ? resiarAnswerResults[i] : null;
+  return resiarEvaluateQuestionAnswerPure(question, rawAnswer, rawResult, i);
 }
 
 function resiarBuildAnswerResultFromCurrentQuestion(index) {
